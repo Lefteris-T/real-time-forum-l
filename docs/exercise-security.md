@@ -1,40 +1,95 @@
+Remember the forum you did a while ago? Well it's time to make one even better also using JS, private messages, real time actions, live sharing video and live screen sharing too. Well, maybe not the last two. To get things straight there is a list below of what you will have to do.
+
 Objectives
-You must follow the same principles as the first subject.
+On this project you will have to focus on a few points:
 
-For this project you must take into account the security of your forum.
+Registration and Login
 
-You should implement a Hypertext Transfer Protocol Secure (HTTPS) protocol :
+Creation of posts
 
-Encrypted connection : for this you will have to generate an SSL certificate, you can think of this like a identity card for your website. You can create your certificates or use "Certificate Authorities"(CA's)
+Commenting posts
 
-We recommend you to take a look into cipher suites.
+Private Messages
 
-The implementation of Rate Limiting must be present on this project
+As you already did the first forum you can use part of the code, but not all of it. Your new forum will have five different parts:
 
-You should encrypt at least the clients passwords. As a Bonus you can also encrypt the database, for this you will have to create a password for your database.
+SQLite, in which you will store data, just like in the previous forum
 
-Sessions and cookies were implemented in the previous project but not under-pressure (tested in an attack environment). So this time you must take this into account.
+Golang, in which you will handle data and Websockets (Backend)
 
-Clients session cookies should be unique. For instance, the session state is stored on the server and the session should present an unique identifier. This way the client has no direct access to it. Therefore, there is no way for attackers to read or tamper with session state.
+Javascript, in which you will handle all the Frontend events and clients Websockets
 
-Hints
-You can take a look at the openssl manual.
+HTML, in which you will organize the elements of the page
 
-For the session cookies you can take a look at the Universal Unique Identifier (UUID)
+CSS, in which you will stylize the elements of the page
 
-Instructions
-You must handle website errors, HTTPS status.
+You will have only one HTML file, so every change of page you want to do, should be handled in the Javascript. This can be called having a single page application.
 
-You must handle all sort of technical errors.
+Registration and Login
+To be able to use the new and upgraded forum users will have to register and login, otherwise they will only see the registration or login page. This is premium stuff. The registration and login process should take in consideration the following features:
 
-The code must respect the good practices.
+Users must be able to fill a register form to register into the forum. They will have to provide at least:
 
-It is recommended to have test files for unit testing.
+Nickname
 
-Allowed packages
-All standard Go packages are allowed.
+Age
 
-autocert
+Gender
+
+First Name
+
+Last Name
+
+E-mail
+
+Password
+
+The user must be able to connect using either the nickname or the e-mail combined with the password.
+
+The user must be able to log out from any page on the forum.
+
+Posts and Comments
+This part is pretty similar to the first forum. Users must be able to:
+
+Create posts
+
+Posts will have categories as in the first forum
+
+Create comments on the posts
+
+See posts in a feed display
+
+See comments only if they click on a post
+
+Private Messages
+Users will be able to send private messages to each other, so you will need to create a chat, where it will exist :
+
+A section to show who is online/offline and able to talk to:
+
+This section must be organized by the last message sent (just like discord). If the user is new and does not present messages you must organize it in alphabetic order.
+
+The user must be able to send private messages to the users who are online.
+
+This section must be visible at all times.
+
+A section that when clicked on the user that you want to send a message, reloads the past messages. Chats between users must:
+
+Be visible, for this you will have to be able to see the previous messages that you had with the user
+
+Reload the last 10 messages and when scrolled up to see more messages you must provide the user with 10 more, without spamming the scroll event. Do not forget what you learned!! (Throttle, Debounce)
+
+Messages must have a specific format:
+
+A date that shows when the message was sent
+
+The user name, that identifies the user that sent the message
+
+As it is expected, the messages should work in real time, in other words, if a user sends a message, the other user should receive the notification of the new message without refreshing the page. Again this is possible through the usage of WebSockets in backend and frontend.
+
+Allowed Packages
+All standard go packages are allowed.
+
+Gorilla websocket
 
 sqlite3
 
@@ -42,22 +97,34 @@ bcrypt
 
 gofrs/uuid or google/uuid
 
-This project will help you learn about :
+You must not use any frontend libraries or frameworks like React, Angular, Vue etc.
 
-HTTPS
+This project will help you learn about:
 
-Cipher suites
+The basics of web :
 
-Goroutines
+HTML
 
-Channels
+HTTP
 
-Rate Limiting
+Sessions and cookies
 
-Encryption
+CSS
 
-password
+Backend and Frontend
 
-session/cookies
+DOM
 
-Universal Unique Identifier (UUID)
+Go routines
+
+Go channels
+
+WebSockets:
+
+Go Websockets
+
+JS Websockets
+
+SQL language
+
+Manipulation of databases
