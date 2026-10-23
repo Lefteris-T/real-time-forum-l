@@ -21,7 +21,7 @@ cmd/forum
 -> services
 -> repositories
 -> SQLite
-```
+```     
 
 Do not rewrite authentication, sessions, or password handling. Extend and
 verify the current implementation.
