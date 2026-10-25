@@ -12,7 +12,22 @@ const (
 	maxUsernameLength = 32
 	minPasswordLength = 8
 	maxPasswordLength = 72
+	maxEmailLength    = 254
 )
+
+// FieldError identifies the field that failed validation.
+type FieldError struct {
+	Field   string
+	Message string
+}
+
+func (e FieldError) Error() string {
+	return fmt.Sprintf("%s: %s", e.Field, e.Message)
+}
+
+func fieldError(field, message string) error {
+	return FieldError{Field: field, Message: message}
+}
 
 // RegistrationInput is raw account-creation form data.
 type RegistrationInput struct {
@@ -32,73 +47,73 @@ type LoginInput struct {
 }
 
 // ValidateRegistration returns normalized email and username values while
-// preserving the password exactly as submitted for bcrypt comparison.
+// preserving the password exactly as submitted for bcrypt.
 func ValidateRegistration(input RegistrationInput) (RegistrationInput, error) {
 	email := strings.ToLower(strings.TrimSpace(input.Email))
-	username := strings.TrimSpace(input.Username)
+	username := strings.ToLower(strings.TrimSpace(input.Username))
 	gender := strings.TrimSpace(input.Gender)
 	firstName := strings.TrimSpace(input.FirstName)
 	lastName := strings.TrimSpace(input.LastName)
 
 	if email == "" {
-		return RegistrationInput{}, fmt.Errorf("email is required")
+		return RegistrationInput{}, fieldError("email", "is required")
+	}
+	if len(email) > maxEmailLength {
+		return RegistrationInput{}, fieldError("email", "is too long")
 	}
 
-	if _, err := mail.ParseAddress(email); err != nil {
-		return RegistrationInput{}, fmt.Errorf("invalid email")
+	parsedEmail, err := mail.ParseAddress(email)
+	if err != nil || parsedEmail.Address != email {
+		return RegistrationInput{}, fieldError("email", "is invalid")
 	}
 
 	at := strings.LastIndexByte(email, '@')
 	if at < 1 || !strings.Contains(email[at+1:], ".") {
-		return RegistrationInput{}, fmt.Errorf("email domain must contain a dot")
+		return RegistrationInput{}, fieldError("email", "domain must contain a dot")
 	}
 
 	if username == "" {
-		return RegistrationInput{}, fmt.Errorf("username is required")
+		return RegistrationInput{}, fieldError("username", "is required")
+	}
+	if len(username) < minUsernameLength {
+		return RegistrationInput{}, fieldError(
+			"username",
+			fmt.Sprintf("must be at least %d characters", minUsernameLength),
+		)
+	}
+	if len(username) > maxUsernameLength {
+		return RegistrationInput{}, fieldError(
+			"username",
+			fmt.Sprintf("must be at most %d characters", maxUsernameLength),
+		)
 	}
 
 	if input.Age < 1 || input.Age > 120 {
-		return RegistrationInput{}, fmt.Errorf("age must be between 1 and 120")
+		return RegistrationInput{}, fieldError("age", "must be between 1 and 120")
 	}
 	if gender == "" {
-		return RegistrationInput{}, fmt.Errorf("gender is required")
+		return RegistrationInput{}, fieldError("gender", "is required")
 	}
 	if firstName == "" {
-		return RegistrationInput{}, fmt.Errorf("first name is required")
+		return RegistrationInput{}, fieldError("first_name", "is required")
 	}
 	if lastName == "" {
-		return RegistrationInput{}, fmt.Errorf("last name is required")
-	}
-
-	if len(username) < minUsernameLength {
-		return RegistrationInput{}, fmt.Errorf(
-			"username must be at least %d characters",
-			minUsernameLength,
-		)
-	}
-
-	if len(username) > maxUsernameLength {
-		return RegistrationInput{}, fmt.Errorf(
-			"username must be at most %d characters",
-			maxUsernameLength,
-		)
+		return RegistrationInput{}, fieldError("last_name", "is required")
 	}
 
 	if input.Password == "" {
-		return RegistrationInput{}, fmt.Errorf("password is required")
+		return RegistrationInput{}, fieldError("password", "is required")
 	}
-
 	if len(input.Password) < minPasswordLength {
-		return RegistrationInput{}, fmt.Errorf(
-			"password must be at least %d characters",
-			minPasswordLength,
+		return RegistrationInput{}, fieldError(
+			"password",
+			fmt.Sprintf("must be at least %d characters", minPasswordLength),
 		)
 	}
-
 	if len(input.Password) > maxPasswordLength {
-		return RegistrationInput{}, fmt.Errorf(
-			"password must be at most %d characters",
-			maxPasswordLength,
+		return RegistrationInput{}, fieldError(
+			"password",
+			fmt.Sprintf("must be at most %d bytes", maxPasswordLength),
 		)
 	}
 
@@ -118,30 +133,29 @@ func ValidateLogin(input LoginInput) (LoginInput, error) {
 	email := strings.ToLower(strings.TrimSpace(input.Email))
 
 	if email == "" {
-		return LoginInput{}, fmt.Errorf("email is required")
+		return LoginInput{}, fieldError("email", "is required")
+	}
+	if len(email) > maxEmailLength {
+		return LoginInput{}, fieldError("email", "is too long")
 	}
 
-	if len(email) > 254 {
-		return LoginInput{}, fmt.Errorf("email is too long")
-	}
-
-	if _, err := mail.ParseAddress(email); err != nil {
-		return LoginInput{}, fmt.Errorf("invalid email")
+	parsedEmail, err := mail.ParseAddress(email)
+	if err != nil || parsedEmail.Address != email {
+		return LoginInput{}, fieldError("email", "is invalid")
 	}
 
 	at := strings.LastIndexByte(email, '@')
 	if at < 1 || !strings.Contains(email[at+1:], ".") {
-		return LoginInput{}, fmt.Errorf("email domain must contain a dot")
+		return LoginInput{}, fieldError("email", "domain must contain a dot")
 	}
 
 	if input.Password == "" {
-		return LoginInput{}, fmt.Errorf("password is required")
+		return LoginInput{}, fieldError("password", "is required")
 	}
-
 	if len(input.Password) > maxPasswordLength {
-		return LoginInput{}, fmt.Errorf(
-			"password must be at most %d characters",
-			maxPasswordLength,
+		return LoginInput{}, fieldError(
+			"password",
+			fmt.Sprintf("must be at most %d bytes", maxPasswordLength),
 		)
 	}
 

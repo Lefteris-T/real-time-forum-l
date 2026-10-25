@@ -1,16 +1,32 @@
 package validation
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
 
-func TestValidateRegistrationValidInput(t *testing.T) {
+func validRegistrationInput() RegistrationInput {
+	return RegistrationInput{
+		Email:     "lefteris@example.com",
+		Username:  "lefteris",
+		Age:       30,
+		Gender:    "test",
+		FirstName: "Test",
+		LastName:  "User",
+		Password:  "strong-password-123",
+	}
+}
+
+func TestValidateRegistrationNormalizesInput(t *testing.T) {
 	input := RegistrationInput{
-		Email:    "  Lefteris@Example.COM  ",
-		Username: "  lefteris  ",
-		Age:      30, Gender: " test ", FirstName: " Test ", LastName: " User ",
-		Password: "strong-password-123",
+		Email:     "  Lefteris@Example.COM  ",
+		Username:  "  Lefteris  ",
+		Age:       30,
+		Gender:    " test ",
+		FirstName: " Test ",
+		LastName:  " User ",
+		Password:  " strong-password-123 ",
 	}
 
 	got, err := ValidateRegistration(input)
@@ -19,209 +35,240 @@ func TestValidateRegistrationValidInput(t *testing.T) {
 	}
 
 	if got.Email != "lefteris@example.com" {
-		t.Errorf(
-			"Email = %q, want %q",
-			got.Email,
-			"lefteris@example.com",
-		)
+		t.Errorf("Email = %q, want %q", got.Email, "lefteris@example.com")
 	}
-
 	if got.Username != "lefteris" {
-		t.Errorf(
-			"Username = %q, want %q",
-			got.Username,
-			"lefteris",
-		)
+		t.Errorf("Username = %q, want %q", got.Username, "lefteris")
 	}
-	if got.Age != 30 || got.Gender != "test" || got.FirstName != "Test" || got.LastName != "User" {
-		t.Fatalf("profile = %+v, want normalized submitted values", got)
+	if got.Age != 30 || got.Gender != "test" ||
+		got.FirstName != "Test" || got.LastName != "User" {
+		t.Errorf("profile = %+v, want normalized profile fields", got)
 	}
-
-	if got.Password != "strong-password-123" {
-		t.Errorf(
-			"Password = %q, want original password",
-			got.Password,
-		)
+	if got.Password != input.Password {
+		t.Errorf("Password = %q, want it preserved exactly", got.Password)
 	}
 }
-func TestValidateRegistrationRejectsInvalidInput(t *testing.T) {
+
+func TestValidateRegistrationAcceptsAgeBoundaries(t *testing.T) {
+	for _, age := range []int{1, 120} {
+		t.Run(string(rune(age)), func(t *testing.T) {
+			input := validRegistrationInput()
+			input.Age = age
+
+			if _, err := ValidateRegistration(input); err != nil {
+				t.Errorf("ValidateRegistration(age=%d) error: %v", age, err)
+			}
+		})
+	}
+}
+
+func TestValidateRegistrationRejectsInvalidFields(t *testing.T) {
 	tests := []struct {
-		name  string
-		input RegistrationInput
+		name   string
+		field  string
+		mutate func(*RegistrationInput)
 	}{
 		{
-			name: "blank email",
-			input: RegistrationInput{
-				Email:    "",
-				Username: "lefteris",
-				Password: "strong-password-123",
+			name:  "blank email",
+			field: "email",
+			mutate: func(input *RegistrationInput) {
+				input.Email = "  "
 			},
 		},
 		{
-			name: "whitespace email",
-			input: RegistrationInput{
-				Email:    "   ",
-				Username: "lefteris",
-				Password: "strong-password-123",
+			name:  "malformed email",
+			field: "email",
+			mutate: func(input *RegistrationInput) {
+				input.Email = "not-an-email"
 			},
 		},
 		{
-			name: "malformed email",
-			input: RegistrationInput{
-				Email:    "not-an-email",
-				Username: "lefteris",
-				Password: "strong-password-123",
+			name:  "email with display name",
+			field: "email",
+			mutate: func(input *RegistrationInput) {
+				input.Email = "Lefteris <lefteris@example.com>"
 			},
 		},
 		{
-			name: "blank username",
-			input: RegistrationInput{
-				Email:    "lefteris@example.com",
-				Username: "",
-				Password: "strong-password-123",
+			name:  "blank username",
+			field: "username",
+			mutate: func(input *RegistrationInput) {
+				input.Username = "  "
 			},
 		},
 		{
-			name: "whitespace username",
-			input: RegistrationInput{
-				Email:    "lefteris@example.com",
-				Username: "   ",
-				Password: "strong-password-123",
+			name:  "username too short",
+			field: "username",
+			mutate: func(input *RegistrationInput) {
+				input.Username = "ab"
 			},
 		},
 		{
-			name: "username too short",
-			input: RegistrationInput{
-				Email:    "lefteris@example.com",
-				Username: "ab",
-				Password: "strong-password-123",
+			name:  "username too long",
+			field: "username",
+			mutate: func(input *RegistrationInput) {
+				input.Username = strings.Repeat("a", maxUsernameLength+1)
 			},
 		},
 		{
-			name: "username too long",
-			input: RegistrationInput{
-				Email:    "lefteris@example.com",
-				Username: "abcdefghijklmnopqrstuvwxyz1234567",
-				Password: "strong-password-123",
+			name:  "age below minimum",
+			field: "age",
+			mutate: func(input *RegistrationInput) {
+				input.Age = 0
 			},
 		},
 		{
-			name: "blank password",
-			input: RegistrationInput{
-				Email:    "lefteris@example.com",
-				Username: "lefteris",
-				Password: "",
+			name:  "age above maximum",
+			field: "age",
+			mutate: func(input *RegistrationInput) {
+				input.Age = 121
 			},
 		},
 		{
-			name: "password too short",
-			input: RegistrationInput{
-				Email:    "lefteris@example.com",
-				Username: "lefteris",
-				Password: "12345",
+			name:  "blank gender",
+			field: "gender",
+			mutate: func(input *RegistrationInput) {
+				input.Gender = "  "
 			},
 		},
 		{
-			name: "password too long",
-			input: RegistrationInput{
-				Email:    "lefteris@example.com",
-				Username: "lefteris",
-				Password: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyz",
+			name:  "blank first name",
+			field: "first_name",
+			mutate: func(input *RegistrationInput) {
+				input.FirstName = "  "
+			},
+		},
+		{
+			name:  "blank last name",
+			field: "last_name",
+			mutate: func(input *RegistrationInput) {
+				input.LastName = "  "
+			},
+		},
+		{
+			name:  "blank password",
+			field: "password",
+			mutate: func(input *RegistrationInput) {
+				input.Password = ""
+			},
+		},
+		{
+			name:  "password too short",
+			field: "password",
+			mutate: func(input *RegistrationInput) {
+				input.Password = "short"
+			},
+		},
+		{
+			name:  "password too long",
+			field: "password",
+			mutate: func(input *RegistrationInput) {
+				input.Password = strings.Repeat("a", maxPasswordLength+1)
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := ValidateRegistration(tt.input)
+			input := validRegistrationInput()
+			tt.mutate(&input)
 
+			_, err := ValidateRegistration(input)
 			if err == nil {
 				t.Fatal("ValidateRegistration() error = nil, want error")
+			}
+
+			var got FieldError
+			if !errors.As(err, &got) {
+				t.Fatalf("error type = %T, want FieldError", err)
+			}
+			if got.Field != tt.field {
+				t.Errorf("error field = %q, want %q", got.Field, tt.field)
 			}
 		})
 	}
 }
-func TestValidateLoginValidInput(t *testing.T) {
+
+func TestValidateLoginNormalizesEmailAndPreservesPassword(t *testing.T) {
 	input := LoginInput{
 		Email:    "  Lefteris@Example.COM  ",
-		Password: "strong-password-123",
+		Password: "password with spaces",
 	}
 
 	got, err := ValidateLogin(input)
 	if err != nil {
 		t.Fatalf("ValidateLogin() error: %v", err)
 	}
-
 	if got.Email != "lefteris@example.com" {
-		t.Errorf(
-			"Email = %q, want %q",
-			got.Email,
-			"lefteris@example.com",
-		)
+		t.Errorf("Email = %q, want %q", got.Email, "lefteris@example.com")
 	}
-
-	if got.Password != "strong-password-123" {
-		t.Errorf(
-			"Password = %q, want original password",
-			got.Password,
-		)
+	if got.Password != input.Password {
+		t.Errorf("Password = %q, want it preserved exactly", got.Password)
 	}
 }
-func TestValidateLoginRejectsInvalidInput(t *testing.T) {
+
+func TestValidateLoginRejectsInvalidFields(t *testing.T) {
 	tests := []struct {
-		name  string
-		input LoginInput
+		name   string
+		field  string
+		mutate func(*LoginInput)
 	}{
 		{
-			name: "blank email",
-			input: LoginInput{
-				Email:    "",
-				Password: "strong-password-123",
+			name:  "blank email",
+			field: "email",
+			mutate: func(input *LoginInput) {
+				input.Email = " "
 			},
 		},
 		{
-			name: "whitespace email",
-			input: LoginInput{
-				Email:    "   ",
-				Password: "strong-password-123",
+			name:  "malformed email",
+			field: "email",
+			mutate: func(input *LoginInput) {
+				input.Email = "not-an-email"
 			},
 		},
 		{
-			name: "malformed email",
-			input: LoginInput{
-				Email:    "not-an-email",
-				Password: "strong-password-123",
+			name:  "oversized email",
+			field: "email",
+			mutate: func(input *LoginInput) {
+				input.Email = strings.Repeat("a", 300) + "@example.com"
 			},
 		},
 		{
-			name: "blank password",
-			input: LoginInput{
-				Email:    "lefteris@example.com",
-				Password: "",
+			name:  "blank password",
+			field: "password",
+			mutate: func(input *LoginInput) {
+				input.Password = ""
 			},
 		},
 		{
-			name: "oversized email",
-			input: LoginInput{
-				Email:    strings.Repeat("a", 300) + "@example.com",
-				Password: "strong-password-123",
-			},
-		},
-		{
-			name: "oversized password",
-			input: LoginInput{
-				Email:    "lefteris@example.com",
-				Password: strings.Repeat("a", 73),
+			name:  "oversized password",
+			field: "password",
+			mutate: func(input *LoginInput) {
+				input.Password = strings.Repeat("a", maxPasswordLength+1)
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := ValidateLogin(tt.input)
+			input := LoginInput{
+				Email:    "lefteris@example.com",
+				Password: "strong-password-123",
+			}
+			tt.mutate(&input)
 
+			_, err := ValidateLogin(input)
 			if err == nil {
 				t.Fatal("ValidateLogin() error = nil, want error")
+			}
+
+			var got FieldError
+			if !errors.As(err, &got) {
+				t.Fatalf("error type = %T, want FieldError", err)
+			}
+			if got.Field != tt.field {
+				t.Errorf("error field = %q, want %q", got.Field, tt.field)
 			}
 		})
 	}
