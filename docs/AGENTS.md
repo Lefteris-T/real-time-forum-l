@@ -124,10 +124,11 @@ connection code. Add abstractions only where they give a useful test boundary.
 The earlier forum is a source of reusable behavior, not a reason to preserve
 incompatible architecture. Reuse compatible authentication, password hashing,
 session handling, SQL safety, and persistence code after checking it against
-the new requirements. Start the new forum with its own fresh database file;
-do not import old users or content, and do not delete or overwrite the old
-database. Do not let old server-rendered multi-page assumptions override the
-new one-page JavaScript requirement.
+the new requirements. Start the new forum with its own fresh database file,
+apply the existing numbered migrations to it, and append new numbered
+migrations for new schema. Do not import old users or content, and do not
+delete or overwrite the old database. Do not let old server-rendered
+multi-page assumptions override the new one-page JavaScript requirement.
 
 ## Completion
 

@@ -17,12 +17,13 @@ For this project, use this order when documents or existing code disagree:
 
 1. `docs/exercise.md` — project requirements and allowed packages
 2. `docs/audit.md` — functional passing checks
-3. this task plan — implementation order and learning notes
-4. existing code — reusable baseline, not an automatic specification
+3. `docs/PRD.md` — clarified product behavior and fixed decisions
+4. this task plan — implementation order and learning notes
+5. existing code — reusable baseline, not an automatic specification
 
-`docs/AGENTS.md` and `docs/PRD.md` describe the new JavaScript and WebSocket
-project. Keep them aligned with the exercise, audit, and this plan as decisions
-are made.
+`docs/AGENTS.md` describes repository-wide working rules. Keep it and
+`docs/PRD.md` aligned with the exercise, audit, and this plan as decisions are
+made.
 
 ## Mandatory Scope
 
@@ -107,21 +108,66 @@ docs: define real-time forum project scope
 
 ### Tasks
 
-- sketch the single-page frontend, Go HTTP server, WebSocket hub, services,
-  repositories, and SQLite responsibilities
-- identify entities for users, posts, categories, comments, conversations,
-  messages, and presence/session state
-- define how a conversation is uniquely identified for a pair of users
-- define ordering data for contacts and stable pagination for messages
-- identify which existing schema and migrations can safely be reused
-- give the new forum a separate database file and create its schema from
-  scratch; do not import or overwrite old forum records
+Document and agree on these boundaries before implementation:
+
+| Layer | Responsibility |
+|---|---|
+| `index.html` and CSS | The single page's structure and presentation |
+| JavaScript | View switching, HTTP requests, and the browser WebSocket connection |
+| HTTP handlers | Receive HTTP requests and write responses |
+| Services | Business rules, validation, authorization, and message sending |
+| Repositories | Parameterized SQL queries and SQLite persistence |
+| WebSocket hub | Connection lifecycle, in-memory online state, and live event delivery |
+
+Use this message flow: JavaScript sends the message through an authenticated
+HTTP endpoint; the handler calls the service; the service checks membership
+and asks the repository to persist the message; only after a successful write
+does the service publish a live event through the WebSocket hub. The recipient's
+JavaScript receives the event over its WebSocket. A disconnected recipient can
+load the persisted message when reopening the conversation.
+
+Document these entities and invariants:
+
+- `users`: nickname, age, gender, first name, last name, email, and password
+  hash; nickname and email are unique
+- `sessions`: opaque session IDs and server-side expiry/state in SQLite
+- `categories`, `posts`, `post_categories`, and `comments`: reuse the existing
+  relationships where suitable; fetch comments when a post opens
+- `conversations`: one row per user pair, with the two user IDs stored in
+  sorted order (`user_low_id < user_high_id`), a check constraint, and a
+  unique constraint on the pair; store nullable `last_message_at` for contact
+  ordering and update it in the same transaction as each message
+- `messages`: conversation ID, sender ID, body, and creation time; use
+  `(created_at, id)` as the stable chronological order and pagination cursor
+- indexes: unique user nickname/email; unique conversation pair; conversation
+  `last_message_at` for contact ordering; and
+  `(conversation_id, created_at, id)` for history pagination
+- online presence: transient hub memory, not a durable database record; a user
+  with multiple open connections becomes offline only after the final one
+  disconnects
+
+Contacts with conversations are ordered by latest message activity; users
+without messages are ordered alphabetically. Message history starts with the
+latest ten records, then fetches ten older records using the stable cursor.
+JavaScript throttles or debounces scroll-triggered fetches.
+
+Reuse compatible old repositories, session/password services, and the
+migration runner after checking them against these decisions. Create a
+separate new database file (for example, `data/realtime-forum.db`), apply the
+existing numbered migrations to that empty file, then append numbered
+migrations for new schema. Do not import old records or alter the old database
+file. Existing migrations remain the schema starting point; new migrations
+extend them without rewriting migration history.
 
 ### Acceptance
 
-- relationships, uniqueness rules, timestamps, and indexes are documented
+- layer responsibilities and message delivery order are documented
+- entities, relationships, pair uniqueness, timestamps, cursors, and required
+  indexes are documented
 - every audit feature has a likely owning layer
 - no third-party package outside the exercise allowlist is planned
+- the new database path and migration sequence are explicit; no existing data
+  is imported or overwritten
 
 ### Suggested Commit
 
@@ -167,17 +213,18 @@ feat: add single-page forum shell
 - use parameterized SQL and transactions
 - distinguish repository work from service rules
 
-### Commit 3.1 — Add The User Schema
+### Commit 3.1 — Add Required Account Fields To The Schema
 
-- add a migration for nickname, age, gender, first name, last name, email, and
+- append a numbered migration to add age, gender, first name, and last name to
+  the existing user schema, which already contains nickname, email, and
   password hash
 - add required-field and unique nickname/email constraints
-- apply the schema to the new forum database; do not backfill or import old
-  account records
+- apply it to the new database after the existing migrations; no old account
+  records need to be backfilled or imported
 
 Acceptance: the new forum starts with a fresh schema in its own database file,
-the old database remains untouched, and duplicate nickname/email values are
-rejected.
+the previous migration files remain unchanged, the old database remains
+untouched, and duplicate nickname/email values are rejected.
 
 ```text
 feat: add required account fields to schema
