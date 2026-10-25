@@ -1,6 +1,7 @@
 package database
 
 import (
+	"database/sql"
 	"path/filepath"
 	"testing"
 )
@@ -58,14 +59,22 @@ func TestAuthSchemaRejectsDuplicateEmailUsernameAndSessionUser(t *testing.T) {
 			email,
 			username,
 			password_hash,
-			created_at
+			created_at,
+			age,
+			gender,
+			first_name,
+			last_name
 		)
-		VALUES (?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		"user@example.com",
 		"lefteris",
 		"hash",
 		"2026-08-09T10:00:00Z",
+		30,
+		"unspecified",
+		"Test",
+		"User",
 	)
 	if err != nil {
 		t.Fatalf("insert first user: %v", err)
@@ -76,14 +85,22 @@ func TestAuthSchemaRejectsDuplicateEmailUsernameAndSessionUser(t *testing.T) {
 			email,
 			username,
 			password_hash,
-			created_at
+			created_at,
+			age,
+			gender,
+			first_name,
+			last_name
 		)
-		VALUES (?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		"user@example.com",
 		"another-user",
 		"hash",
 		"2026-08-09T10:00:00Z",
+		30,
+		"unspecified",
+		"Test",
+		"User",
 	)
 	if err == nil {
 		t.Fatal("duplicate email was accepted")
@@ -94,14 +111,22 @@ func TestAuthSchemaRejectsDuplicateEmailUsernameAndSessionUser(t *testing.T) {
 			email,
 			username,
 			password_hash,
-			created_at
+			created_at,
+			age,
+			gender,
+			first_name,
+			last_name
 		)
-		VALUES (?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		"another@example.com",
 		"lefteris",
 		"hash",
 		"2026-08-09T10:00:00Z",
+		30,
+		"unspecified",
+		"Test",
+		"User",
 	)
 	if err == nil {
 		t.Fatal("duplicate username was accepted")
@@ -152,5 +177,65 @@ func TestAuthSchemaRejectsDuplicateEmailUsernameAndSessionUser(t *testing.T) {
 	)
 	if err == nil {
 		t.Fatal("second session for same user was accepted")
+	}
+}
+func TestUserSchemaHasRequiredProfileFields(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "forum.db")
+
+	db, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+	defer db.Close()
+
+	if err := Migrate(db, "../../migrations"); err != nil {
+		t.Fatalf("Migrate() error: %v", err)
+	}
+
+	rows, err := db.Query(`PRAGMA table_info(users)`)
+	if err != nil {
+		t.Fatalf("query users schema: %v", err)
+	}
+	defer rows.Close()
+
+	columns := make(map[string]bool)
+
+	for rows.Next() {
+		var (
+			cid          int
+			name         string
+			columnType   string
+			notNull      int
+			defaultValue sql.NullString
+			primaryKey   int
+		)
+
+		if err := rows.Scan(
+			&cid,
+			&name,
+			&columnType,
+			&notNull,
+			&defaultValue,
+			&primaryKey,
+		); err != nil {
+			t.Fatalf("scan users schema: %v", err)
+		}
+
+		columns[name] = true
+	}
+
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate users schema: %v", err)
+	}
+
+	for _, required := range []string{
+		"age",
+		"gender",
+		"first_name",
+		"last_name",
+	} {
+		if !columns[required] {
+			t.Errorf("users table is missing column %q", required)
+		}
 	}
 }

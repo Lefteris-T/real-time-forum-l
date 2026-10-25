@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"forum/internal/database"
+	"forum/internal/model"
 	"forum/internal/repository"
 	"forum/internal/service"
 	"forum/internal/session"
@@ -50,11 +51,10 @@ func TestSingleActiveBrowserSession(t *testing.T) {
 		t.Fatalf("Hash(): %v", err)
 	}
 
-	userID, err := users.Create(
-		"lefteris@example.com",
-		"lefteris",
-		passwordHash,
-	)
+	userID, err := users.Create(model.User{
+		Email: "lefteris@example.com", Username: "lefteris", Age: 30,
+		Gender: "test", FirstName: "Test", LastName: "User", PasswordHash: passwordHash,
+	})
 	if err != nil {
 		t.Fatalf("users.Create(): %v", err)
 	}
@@ -107,8 +107,6 @@ func TestSingleActiveBrowserSession(t *testing.T) {
 		loginService,
 		sessionManager,
 		renderer,
-		false,
-		false,
 	)
 
 	mux := http.NewServeMux()

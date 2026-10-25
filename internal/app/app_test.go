@@ -87,127 +87,6 @@ func TestOtherServerErrorsAreReturned(t *testing.T) {
 	}
 }
 
-func TestBuildHandlerWiresGoogleOAuthRoutesWhenEnabled(t *testing.T) {
-	cfg := config.Config{
-		DatabasePath:    t.TempDir() + "/forum.db",
-		SessionDuration: time.Hour,
-		CookieName:      "forum_session",
-		Google: config.OAuthProviderConfig{
-			ClientID:     "google-client-id",
-			ClientSecret: "google-client-secret",
-			RedirectURL:  "http://localhost:8080/auth/google/callback",
-			Enabled:      true,
-		},
-	}
-
-	handler, cleanup, err := buildHandler(cfg)
-	if err != nil {
-		t.Fatalf("buildHandler() error: %v", err)
-	}
-	defer cleanup()
-
-	startReq := httptest.NewRequest(http.MethodGet, "/auth/google", nil)
-	startRec := httptest.NewRecorder()
-
-	handler.ServeHTTP(startRec, startReq)
-
-	if startRec.Code != http.StatusFound {
-		t.Fatalf(
-			"start status = %d, want %d",
-			startRec.Code,
-			http.StatusFound,
-		)
-	}
-
-	location, err := url.Parse(startRec.Header().Get("Location"))
-	if err != nil {
-		t.Fatalf("parse authorization redirect: %v", err)
-	}
-
-	if location.Host != "accounts.google.com" {
-		t.Fatalf(
-			"authorization host = %q, want %q",
-			location.Host,
-			"accounts.google.com",
-		)
-	}
-
-	callbackReq := httptest.NewRequest(
-		http.MethodGet,
-		"/auth/google/callback?error=access_denied",
-		nil,
-	)
-	callbackRec := httptest.NewRecorder()
-
-	handler.ServeHTTP(callbackRec, callbackReq)
-
-	if callbackRec.Code != http.StatusBadRequest {
-		t.Fatalf(
-			"callback status = %d, want %d",
-			callbackRec.Code,
-			http.StatusBadRequest,
-		)
-	}
-
-	for _, page := range []string{"/login", "/register"} {
-		req := httptest.NewRequest(http.MethodGet, page, nil)
-		rec := httptest.NewRecorder()
-
-		handler.ServeHTTP(rec, req)
-
-		if rec.Code != http.StatusOK {
-			t.Fatalf("%s status = %d, want %d", page, rec.Code, http.StatusOK)
-		}
-
-		if !strings.Contains(rec.Body.String(), `href="/auth/google"`) {
-			t.Fatalf("%s does not show enabled Google OAuth link", page)
-		}
-	}
-}
-
-func TestBuildHandlerOmitsGoogleOAuthRoutesWhenDisabled(t *testing.T) {
-	cfg := config.Config{
-		DatabasePath:    t.TempDir() + "/forum.db",
-		SessionDuration: time.Hour,
-		CookieName:      "forum_session",
-	}
-
-	handler, cleanup, err := buildHandler(cfg)
-	if err != nil {
-		t.Fatalf("buildHandler() error: %v", err)
-	}
-	defer cleanup()
-
-	for _, path := range []string{
-		"/auth/google",
-		"/auth/google/callback",
-	} {
-		req := httptest.NewRequest(http.MethodGet, path, nil)
-		rec := httptest.NewRecorder()
-
-		handler.ServeHTTP(rec, req)
-
-		if rec.Code != http.StatusNotFound {
-			t.Fatalf(
-				"%s status = %d, want %d",
-				path,
-				rec.Code,
-				http.StatusNotFound,
-			)
-		}
-	}
-
-	for _, page := range []string{"/login", "/register"} {
-		req := httptest.NewRequest(http.MethodGet, page, nil)
-		rec := httptest.NewRecorder()
-
-		handler.ServeHTTP(rec, req)
-
-		if strings.Contains(rec.Body.String(), "/auth/google") {
-			t.Fatalf("%s shows Google OAuth link while disabled", page)
-		}
-	}
-}
 func TestBuildHandlerAppliesLoginRateLimit(t *testing.T) {
 	t.Parallel()
 
@@ -310,11 +189,6 @@ func TestBuildHandlerAddsSecurityHeadersToAllResponses(
 		{
 			name:       "static root directory is hidden",
 			path:       "/static/",
-			wantStatus: http.StatusNotFound,
-		},
-		{
-			name:       "uploads directory is hidden",
-			path:       "/static/uploads/",
 			wantStatus: http.StatusNotFound,
 		},
 	}

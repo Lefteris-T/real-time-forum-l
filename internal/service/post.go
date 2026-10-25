@@ -15,7 +15,6 @@ type PostCreator interface {
 		title string,
 		body string,
 		categoryIDs []int64,
-		imagePath string,
 	) (int64, error)
 }
 
@@ -51,6 +50,5 @@ func (s *PostService) Create(
 		validated.Title,
 		validated.Body,
 		validated.CategoryIDs,
-		validated.ImagePath,
 	)
 }

@@ -16,11 +16,7 @@ var ErrInvalidLogin = errors.New("invalid login")
 
 // UserCreator is the smallest persistence boundary required for registration.
 type UserCreator interface {
-	Create(
-		email string,
-		username string,
-		passwordHash string,
-	) (int64, error)
+	Create(user model.User) (int64, error)
 }
 
 // PasswordHasher keeps bcrypt details outside registration orchestration.
@@ -63,11 +59,15 @@ func (s *AuthService) Register(
 		return 0, err
 	}
 
-	return s.users.Create(
-		validated.Email,
-		validated.Username,
-		hash,
-	)
+	return s.users.Create(model.User{
+		Email:        validated.Email,
+		Username:     validated.Username,
+		Age:          validated.Age,
+		Gender:       validated.Gender,
+		FirstName:    validated.FirstName,
+		LastName:     validated.LastName,
+		PasswordHash: hash,
+	})
 }
 
 // ErrInvalidCredentials deliberately covers both unknown users and bad

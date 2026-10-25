@@ -15,21 +15,19 @@ type fakeUserRepository struct {
 
 	email        string
 	username     string
+	user         model.User
 	passwordHash string
 
 	id  int64
 	err error
 }
 
-func (f *fakeUserRepository) Create(
-	email string,
-	username string,
-	passwordHash string,
-) (int64, error) {
+func (f *fakeUserRepository) Create(user model.User) (int64, error) {
 	f.createCalled = true
-	f.email = email
-	f.username = username
-	f.passwordHash = passwordHash
+	f.user = user
+	f.email = user.Email
+	f.username = user.Username
+	f.passwordHash = user.PasswordHash
 
 	return f.id, f.err
 }
@@ -64,6 +62,7 @@ func TestRegisterValidUser(t *testing.T) {
 	id, err := auth.Register(validation.RegistrationInput{
 		Email:    "  Lefteris@Example.COM  ",
 		Username: "  lefteris  ",
+		Age:      30, Gender: "test", FirstName: "Test", LastName: "User",
 		Password: "strong-password-123",
 	})
 	if err != nil {
@@ -108,6 +107,9 @@ func TestRegisterValidUser(t *testing.T) {
 			"repository password hash = %q, want hashed-password",
 			repo.passwordHash,
 		)
+	}
+	if repo.user.Age != 30 || repo.user.Gender != "test" || repo.user.FirstName != "Test" || repo.user.LastName != "User" {
+		t.Fatalf("repository profile = %+v, want submitted profile", repo.user)
 	}
 }
 func TestRegisterInvalidInputStopsEarly(t *testing.T) {
@@ -170,6 +172,7 @@ func TestRegisterPreservesDuplicateErrors(t *testing.T) {
 			_, err := auth.Register(validation.RegistrationInput{
 				Email:    "lefteris@example.com",
 				Username: "lefteris",
+				Age:      30, Gender: "test", FirstName: "Test", LastName: "User",
 				Password: "strong-password-123",
 			})
 
@@ -466,41 +469,5 @@ func TestLogoutDeletesSession(t *testing.T) {
 			sessions.deleteID,
 			"session-123",
 		)
-	}
-}
-func TestLoginRejectsOAuthOnlyUser(t *testing.T) {
-	users := &fakeUserFinder{
-		user: model.User{
-			ID:           42,
-			Email:        "oauth@example.com",
-			Username:     "oauth-user",
-			PasswordHash: "",
-		},
-	}
-
-	passwords := &fakePasswordComparer{}
-
-	auth := NewLoginService(
-		users,
-		passwords,
-		nil,
-		24*time.Hour,
-	)
-
-	_, err := auth.Login(validation.LoginInput{
-		Email:    "oauth@example.com",
-		Password: "some-password",
-	})
-
-	if !errors.Is(err, ErrInvalidCredentials) {
-		t.Fatalf(
-			"Login() error = %v, want %v",
-			err,
-			ErrInvalidCredentials,
-		)
-	}
-
-	if passwords.called {
-		t.Fatal("password Compare() was called for OAuth-only user")
 	}
 }

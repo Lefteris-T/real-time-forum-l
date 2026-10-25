@@ -41,12 +41,16 @@ connection.
 
 The existing forum may provide reusable schema or behavior. The new forum
 uses a separate fresh database file (for example, `data/realtime-forum.db`),
-leaving the old database file untouched. Initialize the new file by applying
-the existing numbered migrations, then append new numbered migrations for the
-new requirements. Do not import old users, posts, comments, or other records.
-This avoids inventing values for newly required account fields and makes the
-data reset explicit and reversible while retaining the existing migration
-history as a schema starting point.
+leaving the old database file untouched. Apply retained migrations `001`–`003`
+and required migration `006` to the new file. OAuth migration `004` and
+post-image migration `005` are retired because those features are outside this
+exercise's required scope. Do not import old users, posts, comments, or other
+records. This avoids inventing values for newly required account fields and
+makes the data reset explicit and reversible.
+
+The new application uses local password registration and login only. Users
+must provide all required exercise fields; OAuth-created accounts and
+post-image uploads are not supported.
 
 ## Single-Page Frontend
 

@@ -65,8 +65,6 @@ func TestRegisterGET(t *testing.T) {
 	h := NewRegisterHandler(
 		nil,
 		renderer,
-		false,
-		false,
 	)
 
 	req := httptest.NewRequest(http.MethodGet, "/register", nil)
@@ -120,8 +118,6 @@ func TestRegisterPOSTSuccess(t *testing.T) {
 	h := NewRegisterHandler(
 		service,
 		renderer,
-		false,
-		false,
 	)
 
 	form := strings.NewReader(
@@ -219,8 +215,6 @@ func TestRegisterPOSTInvalidInputReturnsBadRequest(t *testing.T) {
 	h := NewRegisterHandler(
 		service,
 		renderer,
-		false,
-		false,
 	)
 
 	form := strings.NewReader(
@@ -321,8 +315,6 @@ func TestRegisterPOSTDuplicateReturnsConflict(t *testing.T) {
 			h := NewRegisterHandler(
 				service,
 				renderer,
-				false,
-				false,
 			)
 
 			form := strings.NewReader(
@@ -392,8 +384,6 @@ func TestRegisterWrongMethodReturnsMethodNotAllowed(t *testing.T) {
 	h := NewRegisterHandler(
 		service,
 		renderer,
-		false,
-		false,
 	)
 
 	req := httptest.NewRequest(
@@ -459,8 +449,6 @@ func TestRegisterHandlerDoesNotExposeInternalError(t *testing.T) {
 	h := NewRegisterHandler(
 		service,
 		renderer,
-		false,
-		false,
 	)
 
 	body := strings.NewReader(
@@ -501,158 +489,5 @@ func TestRegisterHandlerDoesNotExposeInternalError(t *testing.T) {
 		"/secret/path/forum.db",
 	) {
 		t.Fatal("internal path leaked to response")
-	}
-}
-func TestRegisterPageShowsGitHubOAuthWhenEnabled(t *testing.T) {
-	dir := t.TempDir()
-
-	template := `
-		{{if .GitHubOAuthEnabled}}
-			<a href="/auth/github">Continue with GitHub</a>
-		{{end}}
-	`
-
-	err := os.WriteFile(
-		filepath.Join(dir, "register.html"),
-		[]byte(template),
-		0644,
-	)
-	if err != nil {
-		t.Fatalf("WriteFile() error: %v", err)
-	}
-
-	renderer, err := view.NewRenderer(dir)
-	if err != nil {
-		t.Fatalf("NewRenderer() error: %v", err)
-	}
-
-	h := NewRegisterHandler(
-		&fakeRegistrationService{},
-		renderer,
-		true,
-		false,
-	)
-
-	req := httptest.NewRequest(
-		http.MethodGet,
-		"/register",
-		nil,
-	)
-
-	rec := httptest.NewRecorder()
-
-	h.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf(
-			"status = %d, want %d",
-			rec.Code,
-			http.StatusOK,
-		)
-	}
-
-	if !strings.Contains(
-		rec.Body.String(),
-		"Continue with GitHub",
-	) {
-		t.Fatal("GitHub OAuth link was not rendered")
-	}
-
-	if !strings.Contains(rec.Body.String(), `href="/auth/github"`) {
-		t.Fatal("GitHub OAuth link does not target /auth/github")
-	}
-}
-
-func TestRegisterPageHidesGitHubOAuthWhenDisabled(t *testing.T) {
-	dir := t.TempDir()
-
-	err := os.WriteFile(
-		filepath.Join(dir, "register.html"),
-		[]byte(`
-			{{if .GitHubOAuthEnabled}}
-				<a href="/auth/github">Continue with GitHub</a>
-			{{end}}
-		`),
-		0o644,
-	)
-	if err != nil {
-		t.Fatalf("WriteFile() error: %v", err)
-	}
-
-	renderer, err := view.NewRenderer(dir)
-	if err != nil {
-		t.Fatalf("NewRenderer() error: %v", err)
-	}
-
-	h := NewRegisterHandler(nil, renderer, false, false)
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/register", nil))
-
-	if strings.Contains(rec.Body.String(), "/auth/github") {
-		t.Fatal("GitHub OAuth link was rendered while disabled")
-	}
-}
-
-func TestRegisterPageShowsGoogleOAuthWhenEnabled(t *testing.T) {
-	dir := t.TempDir()
-
-	err := os.WriteFile(
-		filepath.Join(dir, "register.html"),
-		[]byte(`
-			{{if .GoogleOAuthEnabled}}
-				<a href="/auth/google">Continue with Google</a>
-			{{end}}
-		`),
-		0o644,
-	)
-	if err != nil {
-		t.Fatalf("WriteFile() error: %v", err)
-	}
-
-	renderer, err := view.NewRenderer(dir)
-	if err != nil {
-		t.Fatalf("NewRenderer() error: %v", err)
-	}
-
-	h := NewRegisterHandler(nil, renderer, false, true)
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/register", nil))
-
-	if !strings.Contains(rec.Body.String(), "Continue with Google") {
-		t.Fatal("Google OAuth link was not rendered")
-	}
-
-	if !strings.Contains(rec.Body.String(), `href="/auth/google"`) {
-		t.Fatal("Google OAuth link does not target /auth/google")
-	}
-}
-
-func TestRegisterPageHidesGoogleOAuthWhenDisabled(t *testing.T) {
-	dir := t.TempDir()
-
-	err := os.WriteFile(
-		filepath.Join(dir, "register.html"),
-		[]byte(`
-			{{if .GoogleOAuthEnabled}}
-				<a href="/auth/google">Continue with Google</a>
-			{{end}}
-		`),
-		0o644,
-	)
-	if err != nil {
-		t.Fatalf("WriteFile() error: %v", err)
-	}
-
-	renderer, err := view.NewRenderer(dir)
-	if err != nil {
-		t.Fatalf("NewRenderer() error: %v", err)
-	}
-
-	h := NewRegisterHandler(nil, renderer, false, false)
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/register", nil))
-
-	if strings.Contains(rec.Body.String(), "/auth/google") {
-		t.Fatal("Google OAuth link was rendered while disabled")
 	}
 }

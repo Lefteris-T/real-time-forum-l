@@ -9,10 +9,6 @@ data/
 *.db-wal
 *.log
 
-# Runtime post images
-static/uploads/*
-!static/uploads/.gitkeep
-
 # Local build and editor artifacts
 forum
 *.exe

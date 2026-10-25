@@ -22,11 +22,7 @@ func TestUserRepositoryCreateAndFindByEmail(t *testing.T) {
 
 	repo := NewUserRepository(db)
 
-	id, err := repo.Create(
-		"lefteris@example.com",
-		"lefteris",
-		"bcrypt-hash",
-	)
+	id, err := insertTestUser(repo, "lefteris@example.com", "lefteris", "bcrypt-hash")
 	if err != nil {
 		t.Fatalf("Create() error: %v", err)
 	}
@@ -56,6 +52,10 @@ func TestUserRepositoryCreateAndFindByEmail(t *testing.T) {
 		)
 	}
 
+	if user.Age != 30 || user.Gender != "test" || user.FirstName != "Test" || user.LastName != "User" {
+		t.Fatalf("profile = %+v, want persisted profile fields", user)
+	}
+
 	if user.PasswordHash != "bcrypt-hash" {
 		t.Errorf(
 			"user.PasswordHash = %q, want %q",
@@ -80,11 +80,7 @@ func TestUserRepositoryFindByID(t *testing.T) {
 
 	repo := NewUserRepository(db)
 
-	id, err := repo.Create(
-		"lefteris@example.com",
-		"lefteris",
-		"bcrypt-hash",
-	)
+	id, err := insertTestUser(repo, "lefteris@example.com", "lefteris", "bcrypt-hash")
 	if err != nil {
 		t.Fatalf("Create() error: %v", err)
 	}
@@ -96,6 +92,9 @@ func TestUserRepositoryFindByID(t *testing.T) {
 
 	if user.ID != id {
 		t.Errorf("user.ID = %d, want %d", user.ID, id)
+	}
+	if user.Age != 30 || user.Gender != "test" || user.FirstName != "Test" || user.LastName != "User" {
+		t.Fatalf("profile = %+v, want persisted profile fields", user)
 	}
 }
 func TestUserRepositoryReturnsNotFound(t *testing.T) {
@@ -139,76 +138,18 @@ func TestUserRepositoryReturnsConflictErrors(t *testing.T) {
 
 	repo := NewUserRepository(db)
 
-	_, err = repo.Create(
-		"lefteris@example.com",
-		"lefteris",
-		"bcrypt-hash",
-	)
+	_, err = insertTestUser(repo, "lefteris@example.com", "lefteris", "bcrypt-hash")
 	if err != nil {
 		t.Fatalf("first Create() error: %v", err)
 	}
 
-	_, err = repo.Create(
-		"lefteris@example.com",
-		"another-user",
-		"bcrypt-hash",
-	)
+	_, err = insertTestUser(repo, "lefteris@example.com", "another-user", "bcrypt-hash")
 	if err != ErrEmailExists {
 		t.Fatalf("duplicate email error = %v, want ErrEmailExists", err)
 	}
 
-	_, err = repo.Create(
-		"another@example.com",
-		"lefteris",
-		"bcrypt-hash",
-	)
+	_, err = insertTestUser(repo, "another@example.com", "lefteris", "bcrypt-hash")
 	if err != ErrUsernameExists {
 		t.Fatalf("duplicate username error = %v, want ErrUsernameExists", err)
-	}
-}
-func TestUserRepositoryReadsOAuthOnlyUserWithNullPassword(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "forum.db")
-
-	db, err := database.Open(dbPath)
-	if err != nil {
-		t.Fatalf("database.Open() error: %v", err)
-	}
-	defer db.Close()
-
-	if err := database.Migrate(db, "../../migrations"); err != nil {
-		t.Fatalf("database.Migrate() error: %v", err)
-	}
-
-	result, err := db.Exec(`
-		INSERT INTO users (
-			email,
-			username,
-			password_hash,
-			created_at
-		)
-		VALUES (?, ?, NULL, ?)
-	`,
-		"oauth@example.com",
-		"oauth-user",
-		"2026-08-29T00:00:00Z",
-	)
-	if err != nil {
-		t.Fatalf("insert oauth user error: %v", err)
-	}
-
-	id, err := result.LastInsertId()
-	if err != nil {
-		t.Fatalf("LastInsertId() error: %v", err)
-	}
-
-	repo := NewUserRepository(db)
-
-	user, err := repo.ByID(id)
-	if err != nil {
-		t.Fatalf("ByID() error: %v", err)
-	}
-
-	if user.PasswordHash != "" {
-		t.Errorf("PasswordHash = %q, want empty string", user.PasswordHash)
 	}
 }

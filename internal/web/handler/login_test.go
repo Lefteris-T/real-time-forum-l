@@ -47,8 +47,6 @@ func TestLoginGET(t *testing.T) {
 		nil,
 		nil,
 		renderer,
-		false,
-		false,
 	)
 
 	req := httptest.NewRequest(
@@ -198,8 +196,6 @@ func TestLoginPOSTSuccess(t *testing.T) {
 		service,
 		sessions,
 		renderer,
-		false,
-		false,
 	)
 
 	form := strings.NewReader(
@@ -307,8 +303,6 @@ func TestLoginPOSTInvalidInputReturnsBadRequest(t *testing.T) {
 		loginService,
 		sessions,
 		renderer,
-		false,
-		false,
 	)
 
 	form := strings.NewReader(
@@ -388,8 +382,6 @@ func TestLoginPOSTWrongCredentialsReturnsUnauthorized(t *testing.T) {
 		service,
 		sessions,
 		renderer,
-		false,
-		false,
 	)
 
 	form := strings.NewReader(
@@ -512,159 +504,5 @@ func TestLogoutGETReturnsMethodNotAllowed(t *testing.T) {
 			"Allow = %q, want POST",
 			rec.Header().Get("Allow"),
 		)
-	}
-}
-func TestLoginPageShowsGitHubOAuthWhenEnabled(t *testing.T) {
-	dir := t.TempDir()
-
-	template := `
-		{{if .GitHubOAuthEnabled}}
-			<a href="/auth/github">Continue with GitHub</a>
-		{{end}}
-	`
-
-	err := os.WriteFile(
-		filepath.Join(dir, "login.html"),
-		[]byte(template),
-		0644,
-	)
-	if err != nil {
-		t.Fatalf("WriteFile() error: %v", err)
-	}
-
-	renderer, err := view.NewRenderer(dir)
-	if err != nil {
-		t.Fatalf("NewRenderer() error: %v", err)
-	}
-
-	handler := NewLoginHandler(
-		&fakeLoginService{},
-		&fakeSessionManager{},
-		renderer,
-		true,
-		false,
-	)
-
-	req := httptest.NewRequest(
-		http.MethodGet,
-		"/login",
-		nil,
-	)
-
-	rec := httptest.NewRecorder()
-
-	handler.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf(
-			"status = %d, want %d",
-			rec.Code,
-			http.StatusOK,
-		)
-	}
-
-	if !strings.Contains(
-		rec.Body.String(),
-		"Continue with GitHub",
-	) {
-		t.Fatal("GitHub OAuth link was not rendered")
-	}
-
-	if !strings.Contains(rec.Body.String(), `href="/auth/github"`) {
-		t.Fatal("GitHub OAuth link does not target /auth/github")
-	}
-}
-
-func TestLoginPageHidesGitHubOAuthWhenDisabled(t *testing.T) {
-	dir := t.TempDir()
-
-	err := os.WriteFile(
-		filepath.Join(dir, "login.html"),
-		[]byte(`
-			{{if .GitHubOAuthEnabled}}
-				<a href="/auth/github">Continue with GitHub</a>
-			{{end}}
-		`),
-		0o644,
-	)
-	if err != nil {
-		t.Fatalf("WriteFile() error: %v", err)
-	}
-
-	renderer, err := view.NewRenderer(dir)
-	if err != nil {
-		t.Fatalf("NewRenderer() error: %v", err)
-	}
-
-	h := NewLoginHandler(nil, nil, renderer, false, false)
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/login", nil))
-
-	if strings.Contains(rec.Body.String(), "/auth/github") {
-		t.Fatal("GitHub OAuth link was rendered while disabled")
-	}
-}
-
-func TestLoginPageShowsGoogleOAuthWhenEnabled(t *testing.T) {
-	dir := t.TempDir()
-
-	err := os.WriteFile(
-		filepath.Join(dir, "login.html"),
-		[]byte(`
-			{{if .GoogleOAuthEnabled}}
-				<a href="/auth/google">Continue with Google</a>
-			{{end}}
-		`),
-		0o644,
-	)
-	if err != nil {
-		t.Fatalf("WriteFile() error: %v", err)
-	}
-
-	renderer, err := view.NewRenderer(dir)
-	if err != nil {
-		t.Fatalf("NewRenderer() error: %v", err)
-	}
-
-	h := NewLoginHandler(nil, nil, renderer, false, true)
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/login", nil))
-
-	if !strings.Contains(rec.Body.String(), "Continue with Google") {
-		t.Fatal("Google OAuth link was not rendered")
-	}
-
-	if !strings.Contains(rec.Body.String(), `href="/auth/google"`) {
-		t.Fatal("Google OAuth link does not target /auth/google")
-	}
-}
-
-func TestLoginPageHidesGoogleOAuthWhenDisabled(t *testing.T) {
-	dir := t.TempDir()
-
-	err := os.WriteFile(
-		filepath.Join(dir, "login.html"),
-		[]byte(`
-			{{if .GoogleOAuthEnabled}}
-				<a href="/auth/google">Continue with Google</a>
-			{{end}}
-		`),
-		0o644,
-	)
-	if err != nil {
-		t.Fatalf("WriteFile() error: %v", err)
-	}
-
-	renderer, err := view.NewRenderer(dir)
-	if err != nil {
-		t.Fatalf("NewRenderer() error: %v", err)
-	}
-
-	h := NewLoginHandler(nil, nil, renderer, false, false)
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/login", nil))
-
-	if strings.Contains(rec.Body.String(), "/auth/google") {
-		t.Fatal("Google OAuth link was rendered while disabled")
 	}
 }

@@ -21,7 +21,6 @@ type PostListItem struct {
 	Categories []model.Category
 	Likes      int
 	Dislikes   int
-	ImagePath  string
 }
 
 // CommentView combines comment data with author and reaction totals.
@@ -46,7 +45,6 @@ type PostDetail struct {
 	Likes      int
 	Dislikes   int
 	Comments   []CommentView
-	ImagePath  string
 }
 
 // PostRepository owns post writes and the composed queries used by forum views.
@@ -68,7 +66,6 @@ func (r *PostRepository) Create(
 	title string,
 	body string,
 	categoryIDs []int64,
-	imagePath string,
 ) (int64, error) {
 	tx, err := r.db.Begin()
 	if err != nil {
@@ -82,16 +79,14 @@ func (r *PostRepository) Create(
 			author_id,
 			title,
 			body,
-			created_at,
-			image_path
+			created_at
 		)
-		VALUES (?, ?, ?, ?, NULLIF(?, ''))
+		VALUES (?, ?, ?, ?)
 	`,
 		authorID,
 		title,
 		body,
 		time.Now().UTC().Format(time.RFC3339),
-		imagePath,
 	)
 	if err != nil {
 		return 0, err
@@ -134,7 +129,6 @@ func (r *PostRepository) List() ([]PostListItem, error) {
 			p.title,
 			p.body,
 			p.created_at,
-			COALESCE(p.image_path, ''),
 			u.id,
 			u.email,
 			u.username,
@@ -170,7 +164,6 @@ func (r *PostRepository) List() ([]PostListItem, error) {
 			&post.Title,
 			&post.Body,
 			&postCreatedAt,
-			&post.ImagePath,
 			&post.Author.ID,
 			&post.Author.Email,
 			&post.Author.Username,
@@ -339,7 +332,6 @@ func (r *PostRepository) Detail(
 			p.title,
 			p.body,
 			p.created_at,
-			COALESCE(p.image_path, ''),
 			u.id,
 			u.email,
 			u.username,
@@ -362,7 +354,6 @@ func (r *PostRepository) Detail(
 		&post.Title,
 		&post.Body,
 		&postCreatedAt,
-		&post.ImagePath,
 		&post.Author.ID,
 		&post.Author.Email,
 		&post.Author.Username,
@@ -516,7 +507,6 @@ func (r *PostRepository) ListByCategory(
 			p.title,
 			p.body,
 			p.created_at,
-			COALESCE(p.image_path, ''),
 			u.id,
 			u.email,
 			u.username,
@@ -555,7 +545,6 @@ func (r *PostRepository) ListByCategory(
 			&post.Title,
 			&post.Body,
 			&postCreatedAt,
-			&post.ImagePath,
 			&post.Author.ID,
 			&post.Author.Email,
 			&post.Author.Username,
@@ -612,7 +601,6 @@ func (r *PostRepository) ListByAuthor(
 			p.title,
 			p.body,
 			p.created_at,
-			COALESCE(p.image_path, ''),
 			u.id,
 			u.email,
 			u.username,
@@ -649,7 +637,6 @@ func (r *PostRepository) ListByAuthor(
 			&post.Title,
 			&post.Body,
 			&postCreatedAt,
-			&post.ImagePath,
 			&post.Author.ID,
 			&post.Author.Email,
 			&post.Author.Username,
@@ -707,7 +694,6 @@ func (r *PostRepository) ListLikedByUser(
 			p.title,
 			p.body,
 			p.created_at,
-			COALESCE(p.image_path, ''),
 			u.id,
 			u.email,
 			u.username,
@@ -750,7 +736,6 @@ func (r *PostRepository) ListLikedByUser(
 			&post.Title,
 			&post.Body,
 			&postCreatedAt,
-			&post.ImagePath,
 			&post.Author.ID,
 			&post.Author.Email,
 			&post.Author.Username,

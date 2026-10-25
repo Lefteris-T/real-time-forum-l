@@ -153,11 +153,11 @@ JavaScript throttles or debounces scroll-triggered fetches.
 
 Reuse compatible old repositories, session/password services, and the
 migration runner after checking them against these decisions. Create a
-separate new database file (for example, `data/realtime-forum.db`), apply the
-existing numbered migrations to that empty file, then append numbered
-migrations for new schema. Do not import old records or alter the old database
-file. Existing migrations remain the schema starting point; new migrations
-extend them without rewriting migration history.
+separate new database file (for example, `data/realtime-forum.db`) and apply
+retained migrations `001`–`003` plus required migration `006`. Migrations
+`004` (OAuth accounts) and `005` (post images) are retired as out of scope. Do
+not import old records or alter the old database file. Migration `006` adds
+the required account profile fields to this fresh schema.
 
 ### Acceptance
 
@@ -166,8 +166,8 @@ extend them without rewriting migration history.
   indexes are documented
 - every audit feature has a likely owning layer
 - no third-party package outside the exercise allowlist is planned
-- the new database path and migration sequence are explicit; no existing data
-  is imported or overwritten
+- the new database path and retained migration sequence are explicit; no
+  existing data is imported or overwritten
 
 ### Suggested Commit
 
@@ -215,16 +215,16 @@ feat: add single-page forum shell
 
 ### Commit 3.1 — Add Required Account Fields To The Schema
 
-- append a numbered migration to add age, gender, first name, and last name to
-  the existing user schema, which already contains nickname, email, and
-  password hash
+- apply migration `006` to add age, gender, first name, and last name to the
+  retained user schema, which already contains nickname, email, and password
+  hash
 - add required-field and unique nickname/email constraints
 - apply it to the new database after the existing migrations; no old account
   records need to be backfilled or imported
 
 Acceptance: the new forum starts with a fresh schema in its own database file,
-the previous migration files remain unchanged, the old database remains
-untouched, and duplicate nickname/email values are rejected.
+OAuth and post-image migrations are absent from the migration chain, the old
+database remains untouched, and duplicate nickname/email values are rejected.
 
 ```text
 feat: add required account fields to schema

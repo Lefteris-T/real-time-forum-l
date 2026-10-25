@@ -19,13 +19,11 @@ var (
 	ErrPostDuplicateCategory = errors.New("duplicate category")
 )
 
-// PostInput contains post creation values. ImagePath must come from upload
-// storage rather than directly from an untrusted form field.
+// PostInput contains the values needed to create a categorized post.
 type PostInput struct {
 	Title       string
 	Body        string
 	CategoryIDs []int64
-	ImagePath   string
 }
 
 // ValidatePost trims text and requires at least one unique category.

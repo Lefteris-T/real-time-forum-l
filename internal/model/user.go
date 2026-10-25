@@ -7,6 +7,10 @@ type User struct {
 	ID           int64
 	Email        string
 	Username     string
+	Age          int
+	Gender       string
+	FirstName    string
+	LastName     string
 	PasswordHash string
 	CreatedAt    time.Time
 }

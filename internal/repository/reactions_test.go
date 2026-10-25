@@ -31,33 +31,22 @@ func TestPostReactionRepositoryInsertAndToggleOff(t *testing.T) {
 
 	users := NewUserRepository(db)
 
-	authorID, err := users.Create(
-		"author@example.com",
-		"author",
-		"password-hash",
-	)
+	authorID, err := insertTestUser(users, "author@example.com", "author", "password-hash")
 	if err != nil {
 		t.Fatalf("create author: %v", err)
 	}
 
-	reactorID, err := users.Create(
-		"reactor@example.com",
-		"reactor",
-		"password-hash",
-	)
+	reactorID, err := insertTestUser(users, "reactor@example.com", "reactor", "password-hash")
 	if err != nil {
 		t.Fatalf("create reactor: %v", err)
 	}
 
 	posts := NewPostRepository(db)
 
-	postID, err := posts.Create(
-		authorID,
+	postID, err := posts.Create(authorID,
 		"Post",
 		"Body",
-		[]int64{1},
-		"",
-	)
+		[]int64{1})
 	if err != nil {
 		t.Fatalf("posts.Create(): %v", err)
 	}
@@ -149,33 +138,22 @@ func TestPostReactionRepositorySwitchesReaction(t *testing.T) {
 
 	users := NewUserRepository(db)
 
-	authorID, err := users.Create(
-		"author@example.com",
-		"author",
-		"password-hash",
-	)
+	authorID, err := insertTestUser(users, "author@example.com", "author", "password-hash")
 	if err != nil {
 		t.Fatalf("create author: %v", err)
 	}
 
-	reactorID, err := users.Create(
-		"reactor@example.com",
-		"reactor",
-		"password-hash",
-	)
+	reactorID, err := insertTestUser(users, "reactor@example.com", "reactor", "password-hash")
 	if err != nil {
 		t.Fatalf("create reactor: %v", err)
 	}
 
 	posts := NewPostRepository(db)
 
-	postID, err := posts.Create(
-		authorID,
+	postID, err := posts.Create(authorID,
 		"Post",
 		"Body",
-		[]int64{1},
-		"",
-	)
+		[]int64{1})
 	if err != nil {
 		t.Fatalf("posts.Create(): %v", err)
 	}
@@ -275,33 +253,22 @@ func TestCommentReactionRepositoryTransitions(t *testing.T) {
 
 	users := NewUserRepository(db)
 
-	authorID, err := users.Create(
-		"author@example.com",
-		"author",
-		"password-hash",
-	)
+	authorID, err := insertTestUser(users, "author@example.com", "author", "password-hash")
 	if err != nil {
 		t.Fatalf("create author: %v", err)
 	}
 
-	reactorID, err := users.Create(
-		"reactor@example.com",
-		"reactor",
-		"password-hash",
-	)
+	reactorID, err := insertTestUser(users, "reactor@example.com", "reactor", "password-hash")
 	if err != nil {
 		t.Fatalf("create reactor: %v", err)
 	}
 
 	posts := NewPostRepository(db)
 
-	postID, err := posts.Create(
-		authorID,
+	postID, err := posts.Create(authorID,
 		"Post",
 		"Body",
-		[]int64{1},
-		"",
-	)
+		[]int64{1})
 	if err != nil {
 		t.Fatalf("posts.Create(): %v", err)
 	}
@@ -434,11 +401,7 @@ func TestReactionRepositoryReturnsNotFoundForMissingTargets(t *testing.T) {
 
 	users := NewUserRepository(db)
 
-	userID, err := users.Create(
-		"user@example.com",
-		"user",
-		"password-hash",
-	)
+	userID, err := insertTestUser(users, "user@example.com", "user", "password-hash")
 	if err != nil {
 		t.Fatalf("users.Create(): %v", err)
 	}
@@ -499,33 +462,22 @@ func TestPostReactionRepositoryKeepsOneReactionPerUser(t *testing.T) {
 
 	users := NewUserRepository(db)
 
-	authorID, err := users.Create(
-		"author@example.com",
-		"author",
-		"password-hash",
-	)
+	authorID, err := insertTestUser(users, "author@example.com", "author", "password-hash")
 	if err != nil {
 		t.Fatalf("create author: %v", err)
 	}
 
-	reactorID, err := users.Create(
-		"reactor@example.com",
-		"reactor",
-		"password-hash",
-	)
+	reactorID, err := insertTestUser(users, "reactor@example.com", "reactor", "password-hash")
 	if err != nil {
 		t.Fatalf("create reactor: %v", err)
 	}
 
 	posts := NewPostRepository(db)
 
-	postID, err := posts.Create(
-		authorID,
+	postID, err := posts.Create(authorID,
 		"Post",
 		"Body",
-		[]int64{1},
-		"",
-	)
+		[]int64{1})
 	if err != nil {
 		t.Fatalf("posts.Create(): %v", err)
 	}
@@ -592,33 +544,22 @@ func TestPostReactionCountsFollowTransitions(t *testing.T) {
 
 	users := NewUserRepository(db)
 
-	authorID, err := users.Create(
-		"author@example.com",
-		"author",
-		"password-hash",
-	)
+	authorID, err := insertTestUser(users, "author@example.com", "author", "password-hash")
 	if err != nil {
 		t.Fatalf("create author: %v", err)
 	}
 
-	reactorID, err := users.Create(
-		"reactor@example.com",
-		"reactor",
-		"password-hash",
-	)
+	reactorID, err := insertTestUser(users, "reactor@example.com", "reactor", "password-hash")
 	if err != nil {
 		t.Fatalf("create reactor: %v", err)
 	}
 
 	posts := NewPostRepository(db)
 
-	postID, err := posts.Create(
-		authorID,
+	postID, err := posts.Create(authorID,
 		"Post",
 		"Body",
-		[]int64{1},
-		"",
-	)
+		[]int64{1})
 	if err != nil {
 		t.Fatalf("posts.Create(): %v", err)
 	}
@@ -710,33 +651,22 @@ func TestCommentReactionCountsFollowTransitions(t *testing.T) {
 
 	users := NewUserRepository(db)
 
-	authorID, err := users.Create(
-		"author@example.com",
-		"author",
-		"password-hash",
-	)
+	authorID, err := insertTestUser(users, "author@example.com", "author", "password-hash")
 	if err != nil {
 		t.Fatalf("create author: %v", err)
 	}
 
-	reactorID, err := users.Create(
-		"reactor@example.com",
-		"reactor",
-		"password-hash",
-	)
+	reactorID, err := insertTestUser(users, "reactor@example.com", "reactor", "password-hash")
 	if err != nil {
 		t.Fatalf("create reactor: %v", err)
 	}
 
 	posts := NewPostRepository(db)
 
-	postID, err := posts.Create(
-		authorID,
+	postID, err := posts.Create(authorID,
 		"Post",
 		"Body",
-		[]int64{1},
-		"",
-	)
+		[]int64{1})
 	if err != nil {
 		t.Fatalf("posts.Create(): %v", err)
 	}

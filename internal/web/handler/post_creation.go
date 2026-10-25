@@ -2,28 +2,13 @@ package handler
 
 import (
 	"errors"
-	"io"
-	"log"
-	"mime"
 	"net/http"
 	"strconv"
 
 	"forum/internal/model"
-	"forum/internal/upload"
 	"forum/internal/validation"
 	"forum/internal/web/middleware"
 	"forum/internal/web/view"
-)
-
-const (
-	multipartMemoryLimit = 8 * 1024 * 1024
-	maxPostRequestSize   = 32 * 1024 * 1024
-)
-
-const (
-	imageTooLargeMessage    = "Image is too big. Maximum size is 20 MB."
-	unsupportedImageMessage = "Only JPEG, PNG, and GIF images are supported."
-	unreadableImageMessage  = "The selected image could not be read."
 )
 
 // PostCreationService is the validated post write required by the handler.
@@ -39,18 +24,11 @@ type CategoryReader interface {
 	All() ([]model.Category, error)
 }
 
-// PostImageStorage owns validated post-image files and their cleanup.
-type PostImageStorage interface {
-	Save(io.Reader) (string, error)
-	Delete(publicPath string) error
-}
-
 // PostCreationHandler renders the protected form and processes submissions.
 type PostCreationHandler struct {
 	service    PostCreationService
 	categories CategoryReader
 	renderer   *view.Renderer
-	images     PostImageStorage
 }
 
 type newPostPageData struct {
@@ -67,13 +45,11 @@ func NewPostCreationHandler(
 	service PostCreationService,
 	categories CategoryReader,
 	renderer *view.Renderer,
-	images PostImageStorage,
 ) *PostCreationHandler {
 	return &PostCreationHandler{
 		service:    service,
 		categories: categories,
 		renderer:   renderer,
-		images:     images,
 	}
 }
 
@@ -127,57 +103,13 @@ func (h *PostCreationHandler) handlePost(
 ) {
 	user, ok := middleware.CurrentUser(r.Context())
 	if !ok {
-		http.Error(
-			w,
-			http.StatusText(http.StatusUnauthorized),
-			http.StatusUnauthorized,
-		)
+		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
 
-	r.Body = http.MaxBytesReader(w, r.Body, maxPostRequestSize)
-
-	contentType := r.Header.Get("Content-Type")
-	mediaType, _, mediaTypeErr := mime.ParseMediaType(contentType)
-	if contentType != "" && mediaTypeErr != nil {
-		http.Error(
-			w,
-			http.StatusText(http.StatusBadRequest),
-			http.StatusBadRequest,
-		)
-		return
-	}
-	multipartRequest := mediaType == "multipart/form-data"
-
-	var parseErr error
-	if multipartRequest {
-		parseErr = r.ParseMultipartForm(multipartMemoryLimit)
-		if r.MultipartForm != nil {
-			defer func() {
-				if err := r.MultipartForm.RemoveAll(); err != nil {
-					log.Printf("multipart temporary-file cleanup failed: %v", err)
-				}
-			}()
-		}
-	} else {
-		parseErr = r.ParseForm()
-	}
-
-	if parseErr != nil {
-		var maxBytesErr *http.MaxBytesError
-		if errors.As(parseErr, &maxBytesErr) {
-			h.renderForm(w, http.StatusBadRequest, newPostPageData{
-				CurrentUser: &user,
-				Error:       imageTooLargeMessage,
-			})
-			return
-		}
-
-		http.Error(
-			w,
-			http.StatusText(http.StatusBadRequest),
-			http.StatusBadRequest,
-		)
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
 
@@ -187,113 +119,29 @@ func (h *PostCreationHandler) handlePost(
 		Body:                r.FormValue("body"),
 		SelectedCategoryIDs: make(map[int64]bool),
 	}
-
 	categoryValues := r.Form["category"]
-
-	categoryIDs := make(
-		[]int64,
-		0,
-		len(categoryValues),
-	)
-
+	categoryIDs := make([]int64, 0, len(categoryValues))
 	for _, value := range categoryValues {
-		id, err := strconv.ParseInt(
-			value,
-			10,
-			64,
-		)
+		id, err := strconv.ParseInt(value, 10, 64)
 		if err != nil || id <= 0 {
-			http.Error(
-				w,
-				http.StatusText(http.StatusBadRequest),
-				http.StatusBadRequest,
-			)
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 			return
 		}
-
-		categoryIDs = append(
-			categoryIDs,
-			id,
-		)
+		categoryIDs = append(categoryIDs, id)
 		formData.SelectedCategoryIDs[id] = true
 	}
 
-	imagePath := ""
-	if multipartRequest {
-		imageFile, _, err := r.FormFile("image")
-		switch {
-		case errors.Is(err, http.ErrMissingFile):
-			// An absent image part is a valid text-only post.
-
-		case err != nil:
-			http.Error(
-				w,
-				http.StatusText(http.StatusBadRequest),
-				http.StatusBadRequest,
-			)
-			return
-
-		default:
-			defer func() {
-				if err := imageFile.Close(); err != nil {
-					log.Printf("multipart image close failed: %v", err)
-				}
-			}()
-
-			if h.images == nil {
-				http.Error(
-					w,
-					http.StatusText(http.StatusInternalServerError),
-					http.StatusInternalServerError,
-				)
-				return
-			}
-
-			imagePath, err = h.images.Save(imageFile)
-			if err != nil {
-				if message, ok := imageUploadErrorMessage(err); ok {
-					formData.Error = message
-					h.renderForm(w, http.StatusBadRequest, formData)
-				} else {
-					http.Error(
-						w,
-						http.StatusText(http.StatusInternalServerError),
-						http.StatusInternalServerError,
-					)
-				}
-				return
-			}
-		}
-	}
-
-	input := validation.PostInput{
-		Title:       r.FormValue("title"),
-		Body:        r.FormValue("body"),
+	postID, err := h.service.Create(user.ID, validation.PostInput{
+		Title:       formData.Title,
+		Body:        formData.Body,
 		CategoryIDs: categoryIDs,
-		ImagePath:   imagePath,
-	}
-
-	postID, err := h.service.Create(
-		user.ID,
-		input,
-	)
+	})
 	if err != nil {
-		if imagePath != "" {
-			if deleteErr := h.images.Delete(imagePath); deleteErr != nil {
-				log.Printf("post image cleanup failed: %v", deleteErr)
-			}
-		}
-
 		writePostCreationError(w, err)
 		return
 	}
 
-	http.Redirect(
-		w,
-		r,
-		"/posts/"+strconv.FormatInt(postID, 10),
-		http.StatusSeeOther,
-	)
+	http.Redirect(w, r, "/posts/"+strconv.FormatInt(postID, 10), http.StatusSeeOther)
 }
 
 func (h *PostCreationHandler) renderForm(
@@ -351,21 +199,4 @@ func isPostValidationError(err error) bool {
 		errors.Is(err, validation.ErrPostBodyTooLong) ||
 		errors.Is(err, validation.ErrPostCategoryRequired) ||
 		errors.Is(err, validation.ErrPostDuplicateCategory)
-}
-
-func imageUploadErrorMessage(err error) (string, bool) {
-	switch {
-	case errors.Is(err, upload.ErrImageTooLarge):
-		return imageTooLargeMessage, true
-
-	case errors.Is(err, upload.ErrUnsupportedImageType):
-		return unsupportedImageMessage, true
-
-	case errors.Is(err, upload.ErrEmptyImage),
-		errors.Is(err, upload.ErrUnreadableImage):
-		return unreadableImageMessage, true
-
-	default:
-		return "", false
-	}
 }

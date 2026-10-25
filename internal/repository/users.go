@@ -32,23 +32,27 @@ func NewUserRepository(db *sql.DB) *UserRepository {
 
 // Create stores a normalized identity and maps SQLite uniqueness failures to
 // domain-specific duplicate errors.
-func (r *UserRepository) Create(
-	email string,
-	username string,
-	passwordHash string,
-) (int64, error) {
+func (r *UserRepository) Create(user model.User) (int64, error) {
 	result, err := r.db.Exec(`
 		INSERT INTO users (
 			email,
 			username,
+			age,
+			gender,
+			first_name,
+			last_name,
 			password_hash,
 			created_at
 		)
-		VALUES (?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`,
-		email,
-		username,
-		passwordHash,
+		user.Email,
+		user.Username,
+		user.Age,
+		user.Gender,
+		user.FirstName,
+		user.LastName,
+		user.PasswordHash,
 		time.Now().UTC().Format(time.RFC3339),
 	)
 	if err != nil {
@@ -67,13 +71,16 @@ func (r *UserRepository) Create(
 func (r *UserRepository) ByEmail(email string) (model.User, error) {
 	var user model.User
 	var createdAt string
-	var passwordHash sql.NullString
 
 	err := r.db.QueryRow(`
 		SELECT
 			id,
 			email,
 			username,
+			age,
+			gender,
+			first_name,
+			last_name,
 			password_hash,
 			created_at
 		FROM users
@@ -84,13 +91,13 @@ func (r *UserRepository) ByEmail(email string) (model.User, error) {
 		&user.ID,
 		&user.Email,
 		&user.Username,
-		&passwordHash,
+		&user.Age,
+		&user.Gender,
+		&user.FirstName,
+		&user.LastName,
+		&user.PasswordHash,
 		&createdAt,
 	)
-
-	if passwordHash.Valid {
-		user.PasswordHash = passwordHash.String
-	}
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -112,13 +119,16 @@ func (r *UserRepository) ByEmail(email string) (model.User, error) {
 func (r *UserRepository) ByID(id int64) (model.User, error) {
 	var user model.User
 	var createdAt string
-	var passwordHash sql.NullString
 
 	err := r.db.QueryRow(`
 		SELECT
 			id,
 			email,
 			username,
+			age,
+			gender,
+			first_name,
+			last_name,
 			password_hash,
 			created_at
 		FROM users
@@ -129,13 +139,13 @@ func (r *UserRepository) ByID(id int64) (model.User, error) {
 		&user.ID,
 		&user.Email,
 		&user.Username,
-		&passwordHash,
+		&user.Age,
+		&user.Gender,
+		&user.FirstName,
+		&user.LastName,
+		&user.PasswordHash,
 		&createdAt,
 	)
-
-	if passwordHash.Valid {
-		user.PasswordHash = passwordHash.String
-	}
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

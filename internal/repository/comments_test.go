@@ -27,24 +27,17 @@ func TestCommentRepositoryCreateStoresAuthor(t *testing.T) {
 
 	users := NewUserRepository(db)
 
-	authorID, err := users.Create(
-		"author@example.com",
-		"author",
-		"password-hash",
-	)
+	authorID, err := insertTestUser(users, "author@example.com", "author", "password-hash")
 	if err != nil {
 		t.Fatalf("create author: %v", err)
 	}
 
 	posts := NewPostRepository(db)
 
-	postID, err := posts.Create(
-		authorID,
+	postID, err := posts.Create(authorID,
 		"Post title",
 		"Post body",
-		[]int64{1},
-		"",
-	)
+		[]int64{1})
 	if err != nil {
 		t.Fatalf("posts.Create(): %v", err)
 	}
@@ -125,11 +118,7 @@ func TestCommentRepositoryCreateReturnsUnknownPost(t *testing.T) {
 
 	users := NewUserRepository(db)
 
-	authorID, err := users.Create(
-		"author@example.com",
-		"author",
-		"password-hash",
-	)
+	authorID, err := insertTestUser(users, "author@example.com", "author", "password-hash")
 	if err != nil {
 		t.Fatalf("create author: %v", err)
 	}

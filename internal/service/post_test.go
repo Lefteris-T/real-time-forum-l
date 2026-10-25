@@ -13,7 +13,6 @@ type fakePostCreator struct {
 	title       string
 	body        string
 	categoryIDs []int64
-	imagePath   string
 
 	postID int64
 	err    error
@@ -24,14 +23,12 @@ func (f *fakePostCreator) Create(
 	title string,
 	body string,
 	categoryIDs []int64,
-	imagePath string,
 ) (int64, error) {
 	f.called = true
 	f.authorID = authorID
 	f.title = title
 	f.body = body
 	f.categoryIDs = categoryIDs
-	f.imagePath = imagePath
 
 	return f.postID, f.err
 }
@@ -104,9 +101,6 @@ func TestPostServiceCreatesTextOnlyPost(t *testing.T) {
 	if !repo.called {
 		t.Fatal("repository Create() was not called")
 	}
-	if repo.imagePath != "" {
-		t.Fatalf("imagePath = %q, want empty", repo.imagePath)
-	}
 }
 
 func TestPostServiceUsesAuthenticatedUserAsAuthor(t *testing.T) {
@@ -120,7 +114,6 @@ func TestPostServiceUsesAuthenticatedUserAsAuthor(t *testing.T) {
 		Title:       "  My post  ",
 		Body:        "  My body  ",
 		CategoryIDs: []int64{1, 2},
-		ImagePath:   "/static/uploads/550e8400-e29b-41d4-a716-446655440000.png",
 	}
 
 	postID, err := service.Create(42, input)
@@ -162,11 +155,4 @@ func TestPostServiceUsesAuthenticatedUserAsAuthor(t *testing.T) {
 		)
 	}
 
-	if repo.imagePath != input.ImagePath {
-		t.Fatalf(
-			"imagePath = %q, want %q",
-			repo.imagePath,
-			input.ImagePath,
-		)
-	}
 }

@@ -25,13 +25,21 @@ func TestSessionRepositoryCreateAndFind(t *testing.T) {
 		INSERT INTO users (
 			email,
 			username,
+			age,
+			gender,
+			first_name,
+			last_name,
 			password_hash,
 			created_at
 		)
-		VALUES (?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		"lefteris@example.com",
 		"lefteris",
+		30,
+		"test",
+		"Test",
+		"User",
 		"hash",
 		time.Now().UTC().Format(time.RFC3339),
 	)
@@ -95,13 +103,21 @@ func TestSessionRepositoryReplaceRemovesOldSession(t *testing.T) {
 		INSERT INTO users (
 			email,
 			username,
+			age,
+			gender,
+			first_name,
+			last_name,
 			password_hash,
 			created_at
 		)
-		VALUES (?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		"lefteris@example.com",
 		"lefteris",
+		30,
+		"test",
+		"Test",
+		"User",
 		"hash",
 		time.Now().UTC().Format(time.RFC3339),
 	)
@@ -172,13 +188,21 @@ func TestSessionRepositoryDelete(t *testing.T) {
 		INSERT INTO users (
 			email,
 			username,
+			age,
+			gender,
+			first_name,
+			last_name,
 			password_hash,
 			created_at
 		)
-		VALUES (?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		"lefteris@example.com",
 		"lefteris",
+		30,
+		"test",
+		"Test",
+		"User",
 		"hash",
 		time.Now().UTC().Format(time.RFC3339),
 	)
@@ -232,13 +256,21 @@ func TestSessionRepositoryDeletesExpiredSessions(t *testing.T) {
 		INSERT INTO users (
 			email,
 			username,
+			age,
+			gender,
+			first_name,
+			last_name,
 			password_hash,
 			created_at
 		)
-		VALUES (?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		"lefteris@example.com",
 		"lefteris",
+		30,
+		"test",
+		"Test",
+		"User",
 		"hash",
 		time.Now().UTC().Format(time.RFC3339),
 	)
@@ -291,13 +323,21 @@ func TestSessionRepositoryReplaceRollsBackOnFailure(t *testing.T) {
 		INSERT INTO users (
 			email,
 			username,
+			age,
+			gender,
+			first_name,
+			last_name,
 			password_hash,
 			created_at
 		)
-		VALUES (?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		"lefteris@example.com",
 		"lefteris",
+		30,
+		"test",
+		"Test",
+		"User",
 		"hash",
 		time.Now().UTC().Format(time.RFC3339),
 	)

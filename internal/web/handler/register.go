@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	"forum/internal/repository"
 	"forum/internal/service"
@@ -18,34 +19,31 @@ type RegistrationService interface {
 	Register(input validation.RegistrationInput) (int64, error)
 }
 
+func parseAge(value string) int {
+	age, _ := strconv.Atoi(value)
+	return age
+}
+
 // RegisterHandler serves the registration form and account submission.
 type RegisterHandler struct {
-	service            RegistrationService
-	renderer           *view.Renderer
-	gitHubOAuthEnabled bool
-	googleOAuthEnabled bool
+	service  RegistrationService
+	renderer *view.Renderer
 }
 
 type registerPageData struct {
-	Email              string
-	Username           string
-	Error              string
-	GitHubOAuthEnabled bool
-	GoogleOAuthEnabled bool
+	Email    string
+	Username string
+	Error    string
 }
 
 // NewRegisterHandler constructs registration HTTP behavior.
 func NewRegisterHandler(
 	service RegistrationService,
 	renderer *view.Renderer,
-	gitHubOAuthEnabled bool,
-	googleOAuthEnabled bool,
 ) *RegisterHandler {
 	return &RegisterHandler{
-		service:            service,
-		renderer:           renderer,
-		gitHubOAuthEnabled: gitHubOAuthEnabled,
-		googleOAuthEnabled: googleOAuthEnabled,
+		service:  service,
+		renderer: renderer,
 	}
 }
 
@@ -77,10 +75,7 @@ func (h *RegisterHandler) handleGet(w http.ResponseWriter) {
 		w,
 		http.StatusOK,
 		"register.html",
-		registerPageData{
-			GitHubOAuthEnabled: h.gitHubOAuthEnabled,
-			GoogleOAuthEnabled: h.googleOAuthEnabled,
-		},
+		registerPageData{},
 	); err != nil {
 		http.Error(
 			w,
@@ -99,18 +94,20 @@ func (h *RegisterHandler) handlePost(
 			w,
 			http.StatusBadRequest,
 			registerPageData{
-				Error:              "Invalid form",
-				GitHubOAuthEnabled: h.gitHubOAuthEnabled,
-				GoogleOAuthEnabled: h.googleOAuthEnabled,
+				Error: "Invalid form",
 			},
 		)
 		return
 	}
 
 	input := validation.RegistrationInput{
-		Email:    r.FormValue("email"),
-		Username: r.FormValue("username"),
-		Password: r.FormValue("password"),
+		Email:     r.FormValue("email"),
+		Username:  r.FormValue("username"),
+		Age:       parseAge(r.FormValue("age")),
+		Gender:    r.FormValue("gender"),
+		FirstName: r.FormValue("first_name"),
+		LastName:  r.FormValue("last_name"),
+		Password:  r.FormValue("password"),
 	}
 
 	_, err := h.service.Register(input)
@@ -125,10 +122,8 @@ func (h *RegisterHandler) handlePost(
 	}
 
 	data := registerPageData{
-		Email:              input.Email,
-		Username:           input.Username,
-		GitHubOAuthEnabled: h.gitHubOAuthEnabled,
-		GoogleOAuthEnabled: h.googleOAuthEnabled,
+		Email:    input.Email,
+		Username: input.Username,
 	}
 
 	switch {

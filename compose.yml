@@ -11,7 +11,7 @@ services:
 
     environment:
       FORUM_ADDRESS: ":8443"
-      FORUM_DATABASE_PATH: "/app/data/forum.db"
+      FORUM_DATABASE_PATH: "/app/data/realtime-forum.db"
       FORUM_SESSION_DURATION: "24h"
       FORUM_COOKIE_NAME: "forum_session"
       FORUM_HTTPS_ENABLED: "true"
@@ -19,16 +19,9 @@ services:
       FORUM_TLS_KEY_FILE: "/run/certs/localhost.key"
       FORUM_SECURE_COOKIE: "true"
 
-      GITHUB_CLIENT_ID: "${GITHUB_CLIENT_ID:-}"
-      GITHUB_CLIENT_SECRET: "${GITHUB_CLIENT_SECRET:-}"
-      GITHUB_REDIRECT_URL: "${GITHUB_REDIRECT_URL:-}"
-      GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID:-}"
-      GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET:-}"
-      GOOGLE_REDIRECT_URL: "${GOOGLE_REDIRECT_URL:-}"
 
     volumes:
       - forum-data:/app/data
-      - forum-uploads:/app/static/uploads
       - ./certs:/run/certs:ro
 
     restart: unless-stopped
@@ -36,5 +29,3 @@ services:
 volumes:
   forum-data:
     name: forum-data
-  forum-uploads:
-    name: forum-uploads

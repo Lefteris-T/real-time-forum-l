@@ -1,31 +1,23 @@
 package web
 
 import (
-	"bytes"
 	"database/sql"
 	"fmt"
-	"image"
-	"image/color"
-	"image/png"
 	"io"
 	"log"
-	"mime/multipart"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"forum/internal/database"
-	"forum/internal/oauth"
 	"forum/internal/repository"
 	"forum/internal/service"
 	sessionpkg "forum/internal/session"
-	"forum/internal/upload"
 	"forum/internal/web/handler"
 	"forum/internal/web/middleware"
 	"forum/internal/web/view"
@@ -56,25 +48,11 @@ func TestIntegrationRegistrationFlow(t *testing.T) {
 }
 
 type integrationEnv struct {
-	Server          *httptest.Server
-	DB              *sql.DB
-	OAuthStateStore *oauth.OAuthStateStore
-	UploadDir       string
-}
-
-type integrationOAuthProviders struct {
-	GitHub oauth.Provider
-	Google oauth.Provider
+	Server *httptest.Server
+	DB     *sql.DB
 }
 
 func newIntegrationEnv(t *testing.T) *integrationEnv {
-	return newIntegrationEnvWithOAuth(t, integrationOAuthProviders{})
-}
-
-func newIntegrationEnvWithOAuth(
-	t *testing.T,
-	providers integrationOAuthProviders,
-) *integrationEnv {
 	t.Helper()
 
 	// -------------------------------------------------
@@ -128,7 +106,6 @@ func newIntegrationEnvWithOAuth(
 	comments := repository.NewCommentRepository(db)
 
 	reactions := repository.NewReactionRepository(db)
-	oauthAccounts := repository.NewOAuthAccountRepository(db)
 
 	// -------------------------------------------------
 	// Services
@@ -191,13 +168,6 @@ func newIntegrationEnvWithOAuth(
 	}
 
 	staticDir := t.TempDir()
-	uploadDir := filepath.Join(staticDir, "uploads")
-	imageStorage, err := upload.NewStorage(
-		uploadDir,
-	)
-	if err != nil {
-		t.Fatalf("upload.NewStorage(): %v", err)
-	}
 
 	// -------------------------------------------------
 	// Handlers
@@ -206,16 +176,12 @@ func newIntegrationEnvWithOAuth(
 	registerHandler := handler.NewRegisterHandler(
 		authService,
 		renderer,
-		providers.GitHub != nil,
-		providers.Google != nil,
 	)
 
 	loginHandler := handler.NewLoginHandler(
 		loginService,
 		sessionManager,
 		renderer,
-		providers.GitHub != nil,
-		providers.Google != nil,
 	)
 
 	logoutHandler := handler.NewLogoutHandler(
@@ -237,7 +203,6 @@ func newIntegrationEnvWithOAuth(
 		postService,
 		categories,
 		renderer,
-		imageStorage,
 	)
 
 	commentHandler := handler.NewCommentSubmissionHandler(
@@ -253,73 +218,21 @@ func newIntegrationEnvWithOAuth(
 		comments,
 	)
 
-	oauthStateStore := oauth.NewOAuthStateStore()
-	oauthLoginService := service.NewOAuthLoginService(oauthAccounts, users)
-	oauthSuccessHandler := handler.NewOAuthSuccessHandler(
-		oauthLoginService,
-		sessionManager,
-		loginService,
-	)
-
-	var githubOAuthHandler http.Handler
-	var githubOAuthCallbackHandler http.Handler
-	if providers.GitHub != nil {
-		githubOAuthHandler = oauth.NewAuthorizationHandler(
-			providers.GitHub,
-			"github",
-			oauthStateStore,
-			"github_oauth_state",
-			false,
-		)
-		githubOAuthCallbackHandler = oauth.NewCallbackHandler(
-			providers.GitHub,
-			"github",
-			oauthStateStore,
-			"github_oauth_state",
-			false,
-			oauthSuccessHandler.Handle,
-		)
-	}
-
-	var googleOAuthHandler http.Handler
-	var googleOAuthCallbackHandler http.Handler
-	if providers.Google != nil {
-		googleOAuthHandler = oauth.NewAuthorizationHandler(
-			providers.Google,
-			"google",
-			oauthStateStore,
-			"google_oauth_state",
-			false,
-		)
-		googleOAuthCallbackHandler = oauth.NewCallbackHandler(
-			providers.Google,
-			"google",
-			oauthStateStore,
-			"google_oauth_state",
-			false,
-			oauthSuccessHandler.Handle,
-		)
-	}
-
 	// -------------------------------------------------
 	// Router
 	// -------------------------------------------------
 
 	router := NewForumRouter(
 		Handlers{
-			Home:                homeHandler,
-			Register:            registerHandler,
-			Login:               loginHandler,
-			Logout:              logoutHandler,
-			PostCreation:        postCreationHandler,
-			PostDetail:          postDetailHandler,
-			CommentCreate:       commentHandler,
-			PostReaction:        postReactionHandler,
-			CommentReaction:     commentReactionHandler,
-			GitHubOAuth:         githubOAuthHandler,
-			GitHubOAuthCallback: githubOAuthCallbackHandler,
-			GoogleOAuth:         googleOAuthHandler,
-			GoogleOAuthCallback: googleOAuthCallbackHandler,
+			Home:            homeHandler,
+			Register:        registerHandler,
+			Login:           loginHandler,
+			Logout:          logoutHandler,
+			PostCreation:    postCreationHandler,
+			PostDetail:      postDetailHandler,
+			CommentCreate:   commentHandler,
+			PostReaction:    postReactionHandler,
+			CommentReaction: commentReactionHandler,
 
 			Static: http.FileServer(
 				http.Dir(staticDir),
@@ -359,10 +272,8 @@ func newIntegrationEnvWithOAuth(
 	// -------------------------------------------------
 
 	return &integrationEnv{
-		Server:          httptest.NewServer(appHandler),
-		DB:              db,
-		OAuthStateStore: oauthStateStore,
-		UploadDir:       uploadDir,
+		Server: httptest.NewServer(appHandler),
+		DB:     db,
 	}
 }
 func newIntegrationServer(t *testing.T) *httptest.Server {
@@ -407,6 +318,10 @@ func TestIntegrationRegistrationAndLogin(t *testing.T) {
 		"password": {
 			"strong-password-123",
 		},
+		"age":        {"30"},
+		"gender":     {"test"},
+		"first_name": {"Test"},
+		"last_name":  {"User"},
 	}
 
 	res, err := browser.PostForm(
@@ -489,6 +404,10 @@ func registerAndLogin(
 			"password": {
 				"strong-password-123",
 			},
+			"age":        {"30"},
+			"gender":     {"test"},
+			"first_name": {"Test"},
+			"last_name":  {"User"},
 		},
 	)
 	if err != nil {
@@ -622,281 +541,8 @@ func TestIntegrationUserCreatesPostGuestCanReadIt(t *testing.T) {
 		t.Fatal("guest cannot see created post body")
 	}
 
-	if strings.Contains(body, `class="post-image"`) {
-		t.Fatal("text-only post rendered image markup")
-	}
-
-	var imagePath sql.NullString
-	if err := env.DB.QueryRow(
-		`SELECT image_path FROM posts WHERE title = ?`,
-		"My Go post",
-	).Scan(&imagePath); err != nil {
-		t.Fatalf("query text-only image path: %v", err)
-	}
-	if imagePath.Valid {
-		t.Fatalf("text-only image_path = %q, want SQL NULL", imagePath.String)
-	}
 }
 
-func TestIntegrationUserUploadsImageGuestCanViewIt(t *testing.T) {
-	env := newIntegrationEnv(t)
-	defer env.Server.Close()
-
-	browser := newIntegrationBrowser(t)
-	registerAndLogin(
-		t,
-		env.Server,
-		browser,
-		"image-user@example.com",
-		"image-user",
-	)
-
-	imageBytes := mustIntegrationPNG(t)
-	var requestBody bytes.Buffer
-	writer := multipart.NewWriter(&requestBody)
-	for name, value := range map[string]string{
-		"title":    "Post with public image",
-		"body":     "This image should remain visible after logout.",
-		"category": "2",
-	} {
-		if err := writer.WriteField(name, value); err != nil {
-			t.Fatalf("WriteField(%q): %v", name, err)
-		}
-	}
-	imagePart, err := writer.CreateFormFile("image", "browser-name.png")
-	if err != nil {
-		t.Fatalf("CreateFormFile(): %v", err)
-	}
-	if _, err := imagePart.Write(imageBytes); err != nil {
-		t.Fatalf("write multipart image: %v", err)
-	}
-	if err := writer.Close(); err != nil {
-		t.Fatalf("close multipart writer: %v", err)
-	}
-
-	req, err := http.NewRequest(
-		http.MethodPost,
-		env.Server.URL+"/posts",
-		&requestBody,
-	)
-	if err != nil {
-		t.Fatalf("create post request: %v", err)
-	}
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-
-	res, err := browser.Do(req)
-	if err != nil {
-		t.Fatalf("POST /posts: %v", err)
-	}
-	if res.StatusCode != http.StatusSeeOther {
-		t.Fatalf("create post status = %d, want %d", res.StatusCode, http.StatusSeeOther)
-	}
-	postLocation := res.Header.Get("Location")
-	res.Body.Close()
-	if !strings.HasPrefix(postLocation, "/posts/") {
-		t.Fatalf("post Location = %q, want /posts/<id>", postLocation)
-	}
-
-	var imagePath string
-	if err := env.DB.QueryRow(
-		`SELECT image_path FROM posts WHERE title = ?`,
-		"Post with public image",
-	).Scan(&imagePath); err != nil {
-		t.Fatalf("query stored image path: %v", err)
-	}
-	if !strings.HasPrefix(imagePath, "/static/uploads/") {
-		t.Fatalf("stored image path = %q, want /static/uploads/ prefix", imagePath)
-	}
-
-	logoutResponse, err := browser.PostForm(env.Server.URL+"/logout", url.Values{})
-	if err != nil {
-		t.Fatalf("POST /logout: %v", err)
-	}
-	if logoutResponse.StatusCode != http.StatusSeeOther {
-		t.Fatalf("logout status = %d, want %d", logoutResponse.StatusCode, http.StatusSeeOther)
-	}
-	logoutResponse.Body.Close()
-
-	postResponse, err := browser.Get(env.Server.URL + postLocation)
-	if err != nil {
-		t.Fatalf("guest GET post: %v", err)
-	}
-	postBody, err := io.ReadAll(postResponse.Body)
-	postResponse.Body.Close()
-	if err != nil {
-		t.Fatalf("read guest post response: %v", err)
-	}
-	if postResponse.StatusCode != http.StatusOK {
-		t.Fatalf("guest post status = %d, want %d", postResponse.StatusCode, http.StatusOK)
-	}
-	if !strings.Contains(string(postBody), `src="`+imagePath+`"`) {
-		t.Fatalf("guest post does not render image path %q", imagePath)
-	}
-
-	imageResponse, err := browser.Get(env.Server.URL + imagePath)
-	if err != nil {
-		t.Fatalf("guest GET image: %v", err)
-	}
-	servedBytes, err := io.ReadAll(imageResponse.Body)
-	imageResponse.Body.Close()
-	if err != nil {
-		t.Fatalf("read guest image response: %v", err)
-	}
-	if imageResponse.StatusCode != http.StatusOK {
-		t.Fatalf("guest image status = %d, want %d", imageResponse.StatusCode, http.StatusOK)
-	}
-	if contentType := imageResponse.Header.Get("Content-Type"); contentType != "image/png" {
-		t.Fatalf("guest image Content-Type = %q, want image/png", contentType)
-	}
-	if !bytes.Equal(servedBytes, imageBytes) {
-		t.Fatal("guest received image bytes different from the upload")
-	}
-}
-
-func TestIntegrationRejectedUploadCreatesNoPostOrImage(t *testing.T) {
-	validPNG := mustIntegrationPNG(t)
-	oversizedPNG := append([]byte{}, validPNG...)
-	oversizedPNG = append(
-		oversizedPNG,
-		bytes.Repeat([]byte{0}, 25*1024*1024-len(oversizedPNG))...,
-	)
-
-	tests := []struct {
-		name      string
-		imageData []byte
-		wantBody  string
-	}{
-		{
-			name:      "unsupported content",
-			imageData: []byte("plain text is not an image"),
-			wantBody:  "Only JPEG, PNG, and GIF images are supported.",
-		},
-		{
-			name:      "oversized image",
-			imageData: oversizedPNG,
-			wantBody:  "Image is too big. Maximum size is 20 MB.",
-		},
-	}
-
-	for index, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			env := newIntegrationEnv(t)
-			defer env.Server.Close()
-
-			browser := newIntegrationBrowser(t)
-			registerAndLogin(
-				t,
-				env.Server,
-				browser,
-				fmt.Sprintf("rejected-%d@example.com", index),
-				fmt.Sprintf("rejected-%d", index),
-			)
-
-			title := fmt.Sprintf("Rejected image post %d", index)
-			req := newIntegrationImagePostRequest(
-				t,
-				env.Server.URL,
-				title,
-				tt.imageData,
-			)
-			res, err := browser.Do(req)
-			if err != nil {
-				t.Fatalf("POST /posts: %v", err)
-			}
-			responseBody, err := io.ReadAll(res.Body)
-			res.Body.Close()
-			if err != nil {
-				t.Fatalf("read rejected-upload response: %v", err)
-			}
-
-			if res.StatusCode != http.StatusBadRequest {
-				t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusBadRequest)
-			}
-			if res.Close {
-				t.Fatal("server requested connection close for rejected upload")
-			}
-			if !strings.Contains(string(responseBody), tt.wantBody) {
-				t.Fatalf("response body = %q, want text %q", responseBody, tt.wantBody)
-			}
-
-			var postCount int
-			if err := env.DB.QueryRow(
-				`SELECT COUNT(*) FROM posts WHERE title = ?`,
-				title,
-			).Scan(&postCount); err != nil {
-				t.Fatalf("count rejected posts: %v", err)
-			}
-			if postCount != 0 {
-				t.Fatalf("rejected post count = %d, want 0", postCount)
-			}
-
-			entries, err := os.ReadDir(env.UploadDir)
-			if err != nil {
-				t.Fatalf("read upload directory: %v", err)
-			}
-			if len(entries) != 0 {
-				t.Fatalf("upload directory contains %d files after rejection", len(entries))
-			}
-		})
-	}
-}
-
-func newIntegrationImagePostRequest(
-	t *testing.T,
-	serverURL string,
-	title string,
-	imageBytes []byte,
-) *http.Request {
-	t.Helper()
-
-	var requestBody bytes.Buffer
-	writer := multipart.NewWriter(&requestBody)
-	for name, value := range map[string]string{
-		"title":    title,
-		"body":     "Integration image upload body",
-		"category": "2",
-	} {
-		if err := writer.WriteField(name, value); err != nil {
-			t.Fatalf("WriteField(%q): %v", name, err)
-		}
-	}
-
-	imagePart, err := writer.CreateFormFile("image", "browser-name.png")
-	if err != nil {
-		t.Fatalf("CreateFormFile(): %v", err)
-	}
-	if _, err := imagePart.Write(imageBytes); err != nil {
-		t.Fatalf("write multipart image: %v", err)
-	}
-	if err := writer.Close(); err != nil {
-		t.Fatalf("close multipart writer: %v", err)
-	}
-
-	req, err := http.NewRequest(http.MethodPost, serverURL+"/posts", &requestBody)
-	if err != nil {
-		t.Fatalf("create image-post request: %v", err)
-	}
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-
-	return req
-}
-
-func mustIntegrationPNG(t *testing.T) []byte {
-	t.Helper()
-
-	img := image.NewRGBA(image.Rect(0, 0, 2, 2))
-	img.Set(0, 0, color.RGBA{R: 255, A: 255})
-	img.Set(1, 0, color.RGBA{G: 255, A: 255})
-	img.Set(0, 1, color.RGBA{B: 255, A: 255})
-	img.Set(1, 1, color.RGBA{R: 255, G: 255, A: 255})
-
-	var data bytes.Buffer
-	if err := png.Encode(&data, img); err != nil {
-		t.Fatalf("encode PNG: %v", err)
-	}
-
-	return data.Bytes()
-}
 func createPost(
 	t *testing.T,
 	server *httptest.Server,
@@ -1745,9 +1391,13 @@ func TestIntegrationDuplicateRegistrationReturns409(t *testing.T) {
 	browser := newIntegrationBrowser(t)
 
 	form := url.Values{
-		"email":    {"alice@example.com"},
-		"username": {"alice"},
-		"password": {"strong-password-123"},
+		"email":      {"alice@example.com"},
+		"username":   {"alice"},
+		"password":   {"strong-password-123"},
+		"age":        {"30"},
+		"gender":     {"test"},
+		"first_name": {"Test"},
+		"last_name":  {"User"},
 	}
 
 	res, err := browser.PostForm(
@@ -1802,6 +1452,10 @@ func TestIntegrationSQLiteStoresRegisteredUserWithBcryptHash(t *testing.T) {
 			"password": {
 				"strong-password-123",
 			},
+			"age":        {"30"},
+			"gender":     {"test"},
+			"first_name": {"Test"},
+			"last_name":  {"User"},
 		},
 	)
 	if err != nil {

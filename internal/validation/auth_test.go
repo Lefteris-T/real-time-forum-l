@@ -9,6 +9,7 @@ func TestValidateRegistrationValidInput(t *testing.T) {
 	input := RegistrationInput{
 		Email:    "  Lefteris@Example.COM  ",
 		Username: "  lefteris  ",
+		Age:      30, Gender: " test ", FirstName: " Test ", LastName: " User ",
 		Password: "strong-password-123",
 	}
 
@@ -31,6 +32,9 @@ func TestValidateRegistrationValidInput(t *testing.T) {
 			got.Username,
 			"lefteris",
 		)
+	}
+	if got.Age != 30 || got.Gender != "test" || got.FirstName != "Test" || got.LastName != "User" {
+		t.Fatalf("profile = %+v, want normalized submitted values", got)
 	}
 
 	if got.Password != "strong-password-123" {

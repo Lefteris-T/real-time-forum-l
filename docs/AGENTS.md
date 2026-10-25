@@ -125,10 +125,11 @@ The earlier forum is a source of reusable behavior, not a reason to preserve
 incompatible architecture. Reuse compatible authentication, password hashing,
 session handling, SQL safety, and persistence code after checking it against
 the new requirements. Start the new forum with its own fresh database file,
-apply the existing numbered migrations to it, and append new numbered
-migrations for new schema. Do not import old users or content, and do not
-delete or overwrite the old database. Do not let old server-rendered
-multi-page assumptions override the new one-page JavaScript requirement.
+apply retained migrations `001`–`003` and required migration `006`. OAuth
+migration `004` and post-image migration `005` are retired as out of scope.
+Do not import old users or content, and do not delete or overwrite the old
+database. Do not let old server-rendered multi-page assumptions override the
+new one-page JavaScript requirement.
 
 ## Completion
 

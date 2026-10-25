@@ -24,11 +24,11 @@ func TestLoadDefaults(t *testing.T) {
 		t.Errorf("Address = %q, want %q", cfg.Address, ":8080")
 	}
 
-	if cfg.DatabasePath != "data/forum.db" {
+	if cfg.DatabasePath != "data/realtime-forum.db" {
 		t.Errorf(
 			"DatabasePath = %q, want %q",
 			cfg.DatabasePath,
-			"data/forum.db",
+			"data/realtime-forum.db",
 		)
 	}
 
@@ -194,166 +194,6 @@ func TestLoadRejectsInvalidValues(t *testing.T) {
 				t.Fatalf("Load() error = nil, want an error")
 			}
 		})
-	}
-}
-func TestLoadOAuthProvidersDisabledByDefault(t *testing.T) {
-	t.Setenv("GITHUB_CLIENT_ID", "")
-	t.Setenv("GITHUB_CLIENT_SECRET", "")
-	t.Setenv("GITHUB_REDIRECT_URL", "")
-	t.Setenv("GOOGLE_CLIENT_ID", "")
-	t.Setenv("GOOGLE_CLIENT_SECRET", "")
-	t.Setenv("GOOGLE_REDIRECT_URL", "")
-
-	cfg, err := Load()
-	if err != nil {
-		t.Fatalf("Load() returned unexpected error: %v", err)
-	}
-
-	if cfg.GitHub.Enabled {
-		t.Error("GitHub.Enabled = true, want false")
-	}
-
-	if cfg.Google.Enabled {
-		t.Error("Google.Enabled = true, want false")
-	}
-}
-
-func TestLoadGitHubOAuthConfiguration(t *testing.T) {
-	t.Setenv("GITHUB_CLIENT_ID", "github-client")
-	t.Setenv("GITHUB_CLIENT_SECRET", "github-secret")
-	t.Setenv(
-		"GITHUB_REDIRECT_URL",
-		"http://localhost:8080/auth/github/callback",
-	)
-
-	cfg, err := Load()
-	if err != nil {
-		t.Fatalf("Load() returned unexpected error: %v", err)
-	}
-
-	if !cfg.GitHub.Enabled {
-		t.Fatal("GitHub.Enabled = false, want true")
-	}
-
-	if cfg.GitHub.ClientID != "github-client" {
-		t.Errorf(
-			"GitHub.ClientID = %q, want %q",
-			cfg.GitHub.ClientID,
-			"github-client",
-		)
-	}
-
-	if cfg.GitHub.ClientSecret != "github-secret" {
-		t.Errorf(
-			"GitHub.ClientSecret = %q, want %q",
-			cfg.GitHub.ClientSecret,
-			"github-secret",
-		)
-	}
-
-	wantRedirect := "http://localhost:8080/auth/github/callback"
-	if cfg.GitHub.RedirectURL != wantRedirect {
-		t.Errorf(
-			"GitHub.RedirectURL = %q, want %q",
-			cfg.GitHub.RedirectURL,
-			wantRedirect,
-		)
-	}
-}
-
-func TestLoadGoogleOAuthConfiguration(t *testing.T) {
-	t.Setenv("GOOGLE_CLIENT_ID", "google-client")
-	t.Setenv("GOOGLE_CLIENT_SECRET", "google-secret")
-	t.Setenv(
-		"GOOGLE_REDIRECT_URL",
-		"http://localhost:8080/auth/google/callback",
-	)
-
-	cfg, err := Load()
-	if err != nil {
-		t.Fatalf("Load() returned unexpected error: %v", err)
-	}
-
-	if !cfg.Google.Enabled {
-		t.Fatal("Google.Enabled = false, want true")
-	}
-
-	if cfg.Google.ClientID != "google-client" {
-		t.Errorf(
-			"Google.ClientID = %q, want %q",
-			cfg.Google.ClientID,
-			"google-client",
-		)
-	}
-
-	if cfg.Google.ClientSecret != "google-secret" {
-		t.Errorf(
-			"Google.ClientSecret = %q, want %q",
-			cfg.Google.ClientSecret,
-			"google-secret",
-		)
-	}
-
-	wantRedirect := "http://localhost:8080/auth/google/callback"
-	if cfg.Google.RedirectURL != wantRedirect {
-		t.Errorf(
-			"Google.RedirectURL = %q, want %q",
-			cfg.Google.RedirectURL,
-			wantRedirect,
-		)
-	}
-}
-func TestLoadRejectsPartialOAuthConfiguration(t *testing.T) {
-	tests := []struct {
-		name string
-		set  func(t *testing.T)
-	}{
-		{
-			name: "github missing client secret",
-			set: func(t *testing.T) {
-				t.Setenv("GITHUB_CLIENT_ID", "github-client")
-				t.Setenv(
-					"GITHUB_REDIRECT_URL",
-					"http://localhost:8080/auth/github/callback",
-				)
-			},
-		},
-		{
-			name: "google missing redirect url",
-			set: func(t *testing.T) {
-				t.Setenv("GOOGLE_CLIENT_ID", "google-client")
-				t.Setenv("GOOGLE_CLIENT_SECRET", "google-secret")
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv("GITHUB_CLIENT_ID", "")
-			t.Setenv("GITHUB_CLIENT_SECRET", "")
-			t.Setenv("GITHUB_REDIRECT_URL", "")
-			t.Setenv("GOOGLE_CLIENT_ID", "")
-			t.Setenv("GOOGLE_CLIENT_SECRET", "")
-			t.Setenv("GOOGLE_REDIRECT_URL", "")
-
-			tt.set(t)
-
-			_, err := Load()
-			if err == nil {
-				t.Fatal("Load() error = nil, want an error")
-			}
-		})
-	}
-}
-
-func TestLoadRejectsInvalidOAuthRedirectURL(t *testing.T) {
-	t.Setenv("GITHUB_CLIENT_ID", "github-client")
-	t.Setenv("GITHUB_CLIENT_SECRET", "github-secret")
-	t.Setenv("GITHUB_REDIRECT_URL", "not-a-url")
-
-	_, err := Load()
-	if err == nil {
-		t.Fatal("Load() error = nil, want an error")
 	}
 }
 func TestLoadValidatesHTTPSCertificateSettings(t *testing.T) {

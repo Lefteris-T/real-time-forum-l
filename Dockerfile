@@ -25,7 +25,7 @@ COPY migrations /app/migrations
 COPY templates /app/templates
 COPY static /app/static
 
-RUN mkdir -p /app/data /app/static/uploads \
+RUN mkdir -p /app/data \
     && chown -R forum:forum /app
 
 USER forum

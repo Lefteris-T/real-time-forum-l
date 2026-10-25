@@ -16,9 +16,13 @@ const (
 
 // RegistrationInput is raw account-creation form data.
 type RegistrationInput struct {
-	Email    string
-	Username string
-	Password string
+	Email     string
+	Username  string
+	Age       int
+	Gender    string
+	FirstName string
+	LastName  string
+	Password  string
 }
 
 // LoginInput is raw credential form data.
@@ -32,6 +36,9 @@ type LoginInput struct {
 func ValidateRegistration(input RegistrationInput) (RegistrationInput, error) {
 	email := strings.ToLower(strings.TrimSpace(input.Email))
 	username := strings.TrimSpace(input.Username)
+	gender := strings.TrimSpace(input.Gender)
+	firstName := strings.TrimSpace(input.FirstName)
+	lastName := strings.TrimSpace(input.LastName)
 
 	if email == "" {
 		return RegistrationInput{}, fmt.Errorf("email is required")
@@ -48,6 +55,19 @@ func ValidateRegistration(input RegistrationInput) (RegistrationInput, error) {
 
 	if username == "" {
 		return RegistrationInput{}, fmt.Errorf("username is required")
+	}
+
+	if input.Age < 1 || input.Age > 120 {
+		return RegistrationInput{}, fmt.Errorf("age must be between 1 and 120")
+	}
+	if gender == "" {
+		return RegistrationInput{}, fmt.Errorf("gender is required")
+	}
+	if firstName == "" {
+		return RegistrationInput{}, fmt.Errorf("first name is required")
+	}
+	if lastName == "" {
+		return RegistrationInput{}, fmt.Errorf("last name is required")
 	}
 
 	if len(username) < minUsernameLength {
@@ -83,9 +103,13 @@ func ValidateRegistration(input RegistrationInput) (RegistrationInput, error) {
 	}
 
 	return RegistrationInput{
-		Email:    email,
-		Username: username,
-		Password: input.Password,
+		Email:     email,
+		Username:  username,
+		Age:       input.Age,
+		Gender:    gender,
+		FirstName: firstName,
+		LastName:  lastName,
+		Password:  input.Password,
 	}, nil
 }
 

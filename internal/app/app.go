@@ -13,11 +13,9 @@ import (
 
 	"forum/internal/config"
 	"forum/internal/database"
-	"forum/internal/oauth"
 	"forum/internal/repository"
 	"forum/internal/service"
 	sessionpkg "forum/internal/session"
-	"forum/internal/upload"
 	"forum/internal/web"
 	"forum/internal/web/handler"
 	"forum/internal/web/middleware"
@@ -50,6 +48,7 @@ func Run(ctx context.Context, cfg config.Config) error {
 	if err != nil {
 		return err
 	}
+
 	defer cleanup()
 
 	server := newHTTPServer(
@@ -148,7 +147,6 @@ func buildHandler(
 	posts := repository.NewPostRepository(db)
 	comments := repository.NewCommentRepository(db)
 	reactions := repository.NewReactionRepository(db)
-	oauthAccounts := repository.NewOAuthAccountRepository(db)
 
 	passwords := service.NewPasswordManager()
 
@@ -194,31 +192,15 @@ func buildHandler(
 		)
 	}
 
-	imageStorage, err := upload.NewStorage(
-		resolveProjectPath("static/uploads"),
-	)
-	if err != nil {
-		cleanup()
-
-		return nil, nil, fmt.Errorf(
-			"create image storage: %w",
-			err,
-		)
-	}
-
 	registerHandler := handler.NewRegisterHandler(
 		authService,
 		renderer,
-		cfg.GitHub.Enabled,
-		cfg.Google.Enabled,
 	)
 
 	loginHandler := handler.NewLoginHandler(
 		loginService,
 		sessionManager,
 		renderer,
-		cfg.GitHub.Enabled,
-		cfg.Google.Enabled,
 	)
 
 	logoutHandler := handler.NewLogoutHandler(
@@ -239,7 +221,6 @@ func buildHandler(
 		postService,
 		categories,
 		renderer,
-		imageStorage,
 	)
 
 	commentHandler := handler.NewCommentSubmissionHandler(
@@ -254,104 +235,19 @@ func buildHandler(
 		reactionService,
 		comments,
 	)
-	oauthStateStore := oauth.NewOAuthStateStore()
-
-	oauthLoginService := service.NewOAuthLoginService(
-		oauthAccounts,
-		users,
-	)
-
-	oauthSuccessHandler := handler.NewOAuthSuccessHandler(
-		oauthLoginService,
-		sessionManager,
-		loginService,
-	)
-
-	var githubOAuthHandler http.Handler
-	var githubOAuthCallbackHandler http.Handler
-	var googleOAuthHandler http.Handler
-	var googleOAuthCallbackHandler http.Handler
-
-	if cfg.GitHub.Enabled {
-		githubProviderConfig := oauth.ProviderConfig{
-			ClientID:              cfg.GitHub.ClientID,
-			ClientSecret:          cfg.GitHub.ClientSecret,
-			RedirectURL:           cfg.GitHub.RedirectURL,
-			AuthorizationEndpoint: "https://github.com/login/oauth/authorize",
-			TokenEndpoint:         "https://github.com/login/oauth/access_token",
-			UserEndpoint:          "https://api.github.com/user",
-			Client:                oauth.DefaultHTTPClient(),
-		}
-
-		githubProvider := oauth.NewGitHubProvider(
-			githubProviderConfig,
-		)
-
-		githubOAuthHandler = oauth.NewGitHubAuthorizationHandler(
-			githubProviderConfig,
-			oauthStateStore,
-			"github_oauth_state",
-			cfg.SecureCookie,
-		)
-
-		githubOAuthCallbackHandler = oauth.NewGitHubCallbackHandler(
-			githubProvider,
-			oauthStateStore,
-			"github_oauth_state",
-			cfg.SecureCookie,
-			oauthSuccessHandler.Handle,
-		)
-	}
-
-	if cfg.Google.Enabled {
-		googleProviderConfig := oauth.ProviderConfig{
-			ClientID:              cfg.Google.ClientID,
-			ClientSecret:          cfg.Google.ClientSecret,
-			RedirectURL:           cfg.Google.RedirectURL,
-			AuthorizationEndpoint: "https://accounts.google.com/o/oauth2/v2/auth",
-			TokenEndpoint:         "https://oauth2.googleapis.com/token",
-			UserEndpoint:          "https://openidconnect.googleapis.com/v1/userinfo",
-			Client:                oauth.DefaultHTTPClient(),
-		}
-
-		googleProvider := oauth.NewGoogleProvider(
-			googleProviderConfig,
-		)
-
-		googleOAuthHandler = oauth.NewAuthorizationHandler(
-			googleProvider,
-			"google",
-			oauthStateStore,
-			"google_oauth_state",
-			cfg.SecureCookie,
-		)
-
-		googleOAuthCallbackHandler = oauth.NewCallbackHandler(
-			googleProvider,
-			"google",
-			oauthStateStore,
-			"google_oauth_state",
-			cfg.SecureCookie,
-			oauthSuccessHandler.Handle,
-		)
-	}
 	// Routing describes HTTP shape only; business and persistence rules stay in
 	// their respective service and repository layers.
 	router := web.NewForumRouter(
 		web.Handlers{
-			Home:                spaHandler,
-			Register:            registerHandler,
-			Login:               loginHandler,
-			Logout:              logoutHandler,
-			PostCreation:        postCreationHandler,
-			PostDetail:          postDetailHandler,
-			CommentCreate:       commentHandler,
-			PostReaction:        postReactionHandler,
-			CommentReaction:     commentReactionHandler,
-			GitHubOAuth:         githubOAuthHandler,
-			GitHubOAuthCallback: githubOAuthCallbackHandler,
-			GoogleOAuth:         googleOAuthHandler,
-			GoogleOAuthCallback: googleOAuthCallbackHandler,
+			Home:            spaHandler,
+			Register:        registerHandler,
+			Login:           loginHandler,
+			Logout:          logoutHandler,
+			PostCreation:    postCreationHandler,
+			PostDetail:      postDetailHandler,
+			CommentCreate:   commentHandler,
+			PostReaction:    postReactionHandler,
+			CommentReaction: commentReactionHandler,
 			Static: web.NewStaticFileHandler(
 				resolveProjectPath("static"),
 			),

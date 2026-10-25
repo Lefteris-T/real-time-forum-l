@@ -59,7 +59,7 @@
 
             <div class="field">
                 <label for="username">
-                    Username
+                    Nickname
                 </label>
 
                 <input
@@ -70,6 +70,26 @@
                     autocomplete="username"
                     required
                 >
+            </div>
+
+            <div class="field">
+                <label for="age">Age</label>
+                <input id="age" name="age" type="number" min="1" max="120" required>
+            </div>
+
+            <div class="field">
+                <label for="gender">Gender</label>
+                <input id="gender" name="gender" type="text" required>
+            </div>
+
+            <div class="field">
+                <label for="first_name">First name</label>
+                <input id="first_name" name="first_name" type="text" autocomplete="given-name" required>
+            </div>
+
+            <div class="field">
+                <label for="last_name">Last name</label>
+                <input id="last_name" name="last_name" type="text" autocomplete="family-name" required>
             </div>
 
             <div class="field">
@@ -91,24 +111,6 @@
             </button>
 
         </form>
-
-        {{if or .GitHubOAuthEnabled .GoogleOAuthEnabled}}
-            <div class="oauth-login">
-                <p>or</p>
-
-                {{if .GitHubOAuthEnabled}}
-                    <a href="/auth/github">
-                        Continue with GitHub
-                    </a>
-                {{end}}
-
-                {{if .GoogleOAuthEnabled}}
-                    <a href="/auth/google">
-                        Continue with Google
-                    </a>
-                {{end}}
-            </div>
-        {{end}}
 
         <p class="auth-switch">
             Already have an account?
