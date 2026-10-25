@@ -39,9 +39,11 @@ connection.
 - authenticated users can comment on posts
 - posts and comments persist in SQLite
 
-The existing forum may provide reusable schema or behavior. Migration choices
-must preserve relevant existing data where practical and must be documented;
-existing implementation details do not override these requirements.
+The existing forum may provide reusable schema or behavior, but the new forum
+starts with its own fresh database file. Do not import old users, posts,
+comments, or other records. Leave the old database file untouched. This avoids
+inventing values for newly required account fields and makes the reset explicit
+and reversible.
 
 ## Single-Page Frontend
 

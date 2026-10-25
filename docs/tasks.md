@@ -114,7 +114,8 @@ docs: define real-time forum project scope
 - define how a conversation is uniquely identified for a pair of users
 - define ordering data for contacts and stable pagination for messages
 - identify which existing schema and migrations can safely be reused
-- plan migrations without deleting or corrupting existing user data
+- give the new forum a separate database file and create its schema from
+  scratch; do not import or overwrite old forum records
 
 ### Acceptance
 
@@ -171,11 +172,12 @@ feat: add single-page forum shell
 - add a migration for nickname, age, gender, first name, last name, email, and
   password hash
 - add required-field and unique nickname/email constraints
-- decide and document how existing users migrate to the required profile
-  fields; do not silently discard existing records
+- apply the schema to the new forum database; do not backfill or import old
+  account records
 
-Acceptance: fresh and existing database migration cases are covered, and
-duplicate nickname/email values are rejected.
+Acceptance: the new forum starts with a fresh schema in its own database file,
+the old database remains untouched, and duplicate nickname/email values are
+rejected.
 
 ```text
 feat: add required account fields to schema
@@ -315,7 +317,7 @@ feat: connect SPA login and logout
 
 - add or adapt category and post tables with foreign keys
 - add indexes for category lookup and newest-first feed ordering
-- preserve reusable old forum data where practical
+- Reuse suitable repository and service code where it fits; store new forum data in the separate database.
 
 Acceptance: posts reference valid authors and categories, with migration tests
 for those constraints.

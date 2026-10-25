@@ -119,13 +119,15 @@ connection code. Add abstractions only where they give a useful test boundary.
 - keep secrets, local databases, uploads, logs, and generated artifacts out of
   Git
 
-## Baseline Preservation
+## Baseline Reuse And Data Reset
 
 The earlier forum is a source of reusable behavior, not a reason to preserve
-incompatible architecture. During Phase 0, identify what should carry forward.
-Preserve relevant authentication, password hashing, session handling, SQL
-safety, and forum data where compatible. Do not let old server-rendered
-multi-page assumptions override the new one-page JavaScript requirement.
+incompatible architecture. Reuse compatible authentication, password hashing,
+session handling, SQL safety, and persistence code after checking it against
+the new requirements. Start the new forum with its own fresh database file;
+do not import old users or content, and do not delete or overwrite the old
+database. Do not let old server-rendered multi-page assumptions override the
+new one-page JavaScript requirement.
 
 ## Completion
 
