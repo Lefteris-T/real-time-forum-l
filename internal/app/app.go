@@ -226,9 +226,8 @@ func buildHandler(
 		sessionManager,
 	)
 
-	homeHandler := handler.NewHomeHandler(
-		posts,
-		renderer,
+	spaHandler := handler.NewSPAHandler(
+		resolveProjectPath("static/index.html"),
 	)
 
 	postDetailHandler := handler.NewPostDetailHandler(
@@ -340,7 +339,7 @@ func buildHandler(
 	// their respective service and repository layers.
 	router := web.NewForumRouter(
 		web.Handlers{
-			Home:                homeHandler,
+			Home:                spaHandler,
 			Register:            registerHandler,
 			Login:               loginHandler,
 			Logout:              logoutHandler,
