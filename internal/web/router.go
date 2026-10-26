@@ -124,13 +124,13 @@ func NewForumRouter(h Handlers) http.Handler {
 		{
 			Methods: []string{http.MethodGet},
 			Pattern: "/posts/new",
-			Handler: h.PostCreation,
+			Handler: middleware.RequireAuth(h.PostCreation),
 		},
 		{
 
 			Methods: []string{http.MethodPost},
 			Pattern: "/posts",
-			Handler: h.PostCreation,
+			Handler: middleware.RequireAuth(h.PostCreation),
 		},
 		{
 			Methods: []string{http.MethodGet},
@@ -143,17 +143,21 @@ func NewForumRouter(h Handlers) http.Handler {
 		{
 			Methods: nil,
 			Pattern: "/posts/",
-			Handler: postRoutes(
-				h.PostDetail,
-				h.CommentCreate,
-				h.PostReaction,
+			Handler: middleware.RequireAuth(
+				postRoutes(
+					h.PostDetail,
+					h.CommentCreate,
+					h.PostReaction,
+				),
 			),
 		},
 		{
 			Methods: nil,
 			Pattern: "/comments/",
-			Handler: commentRoutes(
-				h.CommentReaction,
+			Handler: middleware.RequireAuth(
+				commentRoutes(
+					h.CommentReaction,
+				),
 			),
 		},
 	}

@@ -2,6 +2,7 @@ package web
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -448,7 +449,7 @@ func registerAndLogin(
 
 	res.Body.Close()
 }
-func TestIntegrationUserCreatesPostGuestCanReadIt(t *testing.T) {
+func TestIntegrationGuestCannotReadPostButAuthenticatedUserCan(t *testing.T) {
 	env := newIntegrationEnv(t)
 	server := env.Server
 	defer server.Close()
@@ -510,12 +511,17 @@ func TestIntegrationUserCreatesPostGuestCanReadIt(t *testing.T) {
 		t.Fatalf("guest GET post: %v", err)
 	}
 
+	if res.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("guest GET post status = %d, want %d", res.StatusCode, http.StatusUnauthorized)
+	}
+	res.Body.Close()
+
+	res, err = userBrowser.Get(server.URL + location)
+	if err != nil {
+		t.Fatalf("authenticated GET post: %v", err)
+	}
 	if res.StatusCode != http.StatusOK {
-		t.Fatalf(
-			"guest status = %d, want %d",
-			res.StatusCode,
-			http.StatusOK,
-		)
+		t.Fatalf("authenticated GET post status = %d, want %d", res.StatusCode, http.StatusOK)
 	}
 
 	bodyBytes, err := io.ReadAll(res.Body)
@@ -525,21 +531,12 @@ func TestIntegrationUserCreatesPostGuestCanReadIt(t *testing.T) {
 	res.Body.Close()
 
 	body := string(bodyBytes)
-
-	if !strings.Contains(
-		body,
-		"My Go post",
-	) {
-		t.Fatal("guest cannot see created post title")
+	if !strings.Contains(body, "My Go post") {
+		t.Fatal("authenticated user cannot see created post title")
 	}
-
-	if !strings.Contains(
-		body,
-		"Learning integration testing.",
-	) {
-		t.Fatal("guest cannot see created post body")
+	if !strings.Contains(body, "Learning integration testing.") {
+		t.Fatal("authenticated user cannot see created post body")
 	}
-
 }
 
 func createPost(
@@ -1433,6 +1430,92 @@ func TestIntegrationDuplicateRegistrationReturns409(t *testing.T) {
 		)
 	}
 }
+
+func TestIntegrationLogoutRevokesSessionAndProtectedAccess(t *testing.T) {
+	env := newIntegrationEnv(t)
+	defer env.Server.Close()
+
+	browser := newIntegrationBrowser(t)
+	registerAndLogin(
+		t,
+		env.Server,
+		browser,
+		"logout@example.com",
+		"logout-user",
+	)
+
+	serverURL, err := url.Parse(env.Server.URL)
+	if err != nil {
+		t.Fatalf("url.Parse(server URL): %v", err)
+	}
+	var sessionID string
+	for _, cookie := range browser.Jar.Cookies(serverURL) {
+		if cookie.Name == "forum_session" {
+			sessionID = cookie.Value
+			break
+		}
+	}
+	if sessionID == "" {
+		t.Fatal("login did not store the session cookie")
+	}
+
+	sessionRepo := repository.NewSessionRepository(env.DB)
+	if _, err := sessionRepo.ByID(sessionID); err != nil {
+		t.Fatalf("login session was not stored server-side: %v", err)
+	}
+
+	res, err := browser.Get(env.Server.URL + "/posts/new")
+	if err != nil {
+		t.Fatalf("GET protected page before logout: %v", err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("protected page status before logout = %d, want %d", res.StatusCode, http.StatusOK)
+	}
+
+	res, err = browser.PostForm(env.Server.URL+"/logout", url.Values{})
+	if err != nil {
+		t.Fatalf("POST /logout: %v", err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusSeeOther {
+		t.Fatalf("logout status = %d, want %d", res.StatusCode, http.StatusSeeOther)
+	}
+
+	clearedCookie := false
+	for _, cookie := range res.Cookies() {
+		if cookie.Name == "forum_session" && cookie.Value == "" && cookie.MaxAge < 0 {
+			clearedCookie = true
+		}
+	}
+	if !clearedCookie {
+		t.Fatal("logout response did not expire the session cookie")
+	}
+	for _, cookie := range browser.Jar.Cookies(serverURL) {
+		if cookie.Name == "forum_session" {
+			t.Fatal("browser cookie jar retained the session cookie after logout")
+		}
+	}
+
+	if _, err := sessionRepo.ByID(sessionID); !errors.Is(err, repository.ErrSessionNotFound) {
+		t.Fatalf("session lookup after logout error = %v, want ErrSessionNotFound", err)
+	}
+
+	request, err := http.NewRequest(http.MethodGet, env.Server.URL+"/posts/new", nil)
+	if err != nil {
+		t.Fatalf("create request with old cookie: %v", err)
+	}
+	request.AddCookie(&http.Cookie{Name: "forum_session", Value: sessionID})
+	res, err = http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("GET protected page with old cookie: %v", err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("old session status = %d, want %d", res.StatusCode, http.StatusUnauthorized)
+	}
+}
+
 func TestIntegrationSQLiteStoresRegisteredUserWithBcryptHash(t *testing.T) {
 	env := newIntegrationEnv(t)
 	defer env.Server.Close()

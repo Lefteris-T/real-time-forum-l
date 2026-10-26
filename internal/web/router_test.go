@@ -9,7 +9,18 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"forum/internal/model"
+	"forum/internal/web/middleware"
 )
+
+func authenticatedRequest(method, path string) *http.Request {
+	request := httptest.NewRequest(method, path, nil)
+	return request.WithContext(middleware.ContextWithUser(
+		request.Context(),
+		model.User{ID: 1},
+	))
+}
 
 func TestMethodHandlerRejectsWrongMethodWithAllowHeader(t *testing.T) {
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -680,11 +691,7 @@ func TestForumRouterMethods(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest(
-				tt.method,
-				tt.path,
-				nil,
-			)
+			req := authenticatedRequest(tt.method, tt.path)
 
 			rec := httptest.NewRecorder()
 
@@ -788,11 +795,7 @@ func TestForumRouterRejectsGETOnMutationRoutes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.path, func(t *testing.T) {
-			req := httptest.NewRequest(
-				http.MethodGet,
-				tt.path,
-				nil,
-			)
+			req := authenticatedRequest(http.MethodGet, tt.path)
 
 			rec := httptest.NewRecorder()
 

@@ -149,6 +149,56 @@ func TestBuildHandlerAppliesLoginRateLimit(t *testing.T) {
 		}
 	}
 }
+
+func TestGuestAccessBoundaries(t *testing.T) {
+	handler, cleanup, err := buildHandler(config.Config{
+		DatabasePath:    t.TempDir() + "/forum.db",
+		SessionDuration: time.Hour,
+		CookieName:      "forum_session",
+	})
+	if err != nil {
+		t.Fatalf("buildHandler() error: %v", err)
+	}
+	t.Cleanup(cleanup)
+
+	tests := []struct {
+		name   string
+		method string
+		path   string
+		status int
+	}{
+		{name: "SPA shell", method: http.MethodGet, path: "/", status: http.StatusOK},
+		{name: "SPA stylesheet", method: http.MethodGet, path: "/static/app.css", status: http.StatusOK},
+		{name: "login page", method: http.MethodGet, path: "/login", status: http.StatusOK},
+		{name: "registration page", method: http.MethodGet, path: "/register", status: http.StatusOK},
+		{name: "login endpoint", method: http.MethodPost, path: "/login", status: http.StatusBadRequest},
+		{name: "registration endpoint", method: http.MethodPost, path: "/register", status: http.StatusBadRequest},
+		{name: "logout endpoint clears guest cookie", method: http.MethodPost, path: "/logout", status: http.StatusSeeOther},
+		{name: "new post form", method: http.MethodGet, path: "/posts/new", status: http.StatusUnauthorized},
+		{name: "create post", method: http.MethodPost, path: "/posts", status: http.StatusUnauthorized},
+		{name: "post detail", method: http.MethodGet, path: "/posts/1", status: http.StatusUnauthorized},
+		{name: "create comment", method: http.MethodPost, path: "/posts/1/comments", status: http.StatusUnauthorized},
+		{name: "react to post", method: http.MethodPost, path: "/posts/1/react", status: http.StatusUnauthorized},
+		{name: "react to comment", method: http.MethodPost, path: "/comments/1/react", status: http.StatusUnauthorized},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			request := httptest.NewRequest(tt.method, tt.path, nil)
+			response := httptest.NewRecorder()
+
+			handler.ServeHTTP(response, request)
+
+			if response.Code != tt.status {
+				t.Fatalf(
+					"status = %d, want %d",
+					response.Code,
+					tt.status,
+				)
+			}
+		})
+	}
+}
 func TestBuildHandlerAddsSecurityHeadersToAllResponses(
 	t *testing.T,
 ) {
