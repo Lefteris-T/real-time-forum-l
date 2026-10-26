@@ -135,7 +135,7 @@ func NewForumRouter(h Handlers) http.Handler {
 			Handler: middleware.RequireAuth(h.CategoryList),
 		},
 		{
-			Methods: []string{http.MethodPost},
+			Methods: []string{http.MethodGet, http.MethodPost},
 			Pattern: "/api/posts",
 			Handler: middleware.RequireAuth(h.PostAPI),
 		},

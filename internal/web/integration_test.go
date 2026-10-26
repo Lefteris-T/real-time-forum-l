@@ -229,7 +229,7 @@ func newIntegrationEnv(t *testing.T) *integrationEnv {
 			Logout:          logoutHandler,
 			SessionStatus:   handler.NewSessionStatusHandler(),
 			CategoryList:    handler.NewCategoryListHandler(categories),
-			PostAPI:         handler.NewPostAPIHandler(postService),
+			PostAPI:         handler.NewPostAPIHandler(postService, posts),
 			PostCreation:    postCreationHandler,
 			PostDetail:      postDetailHandler,
 			CommentCreate:   commentHandler,
@@ -1324,6 +1324,87 @@ func TestIntegrationAPICreatesPostForAuthenticatedAuthor(t *testing.T) {
 	}
 	if postCount != 1 {
 		t.Fatalf("post count = %d, want invalid category request to be rejected", postCount)
+	}
+}
+
+func TestIntegrationPostAPIFeedReturnsNewestPostsToAuthenticatedUser(t *testing.T) {
+	env := newIntegrationEnv(t)
+	defer env.Server.Close()
+	browser := newIntegrationBrowser(t)
+
+	res, err := browser.Get(env.Server.URL + "/api/posts")
+	if err != nil {
+		t.Fatalf("guest GET /api/posts: %v", err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("guest status = %d, want %d", res.StatusCode, http.StatusUnauthorized)
+	}
+
+	registerAndLogin(t, env.Server, browser, "feed@example.com", "feed-user")
+	create := func(title, body, category string) {
+		t.Helper()
+		response, err := browser.PostForm(env.Server.URL+"/api/posts", url.Values{
+			"title":    {title},
+			"body":     {body},
+			"category": {category},
+		})
+		if err != nil {
+			t.Fatalf("create feed post %q: %v", title, err)
+		}
+		response.Body.Close()
+		if response.StatusCode != http.StatusCreated {
+			t.Fatalf("create feed post status = %d, want %d", response.StatusCode, http.StatusCreated)
+		}
+	}
+	create("First feed post", "First body", "2")
+	create("Second feed post", "Second body", "4")
+
+	res, err = browser.Get(env.Server.URL + "/api/posts")
+	if err != nil {
+		t.Fatalf("authenticated GET /api/posts: %v", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("feed status = %d, want %d", res.StatusCode, http.StatusOK)
+	}
+	if got := res.Header.Get("Content-Type"); !strings.HasPrefix(got, "application/json") {
+		t.Fatalf("Content-Type = %q, want application/json", got)
+	}
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		t.Fatalf("read feed response: %v", err)
+	}
+	if strings.Contains(string(body), "feed@example.com") {
+		t.Fatal("feed response exposed the author's email")
+	}
+	var response struct {
+		Posts []struct {
+			Title     string `json:"title"`
+			Body      string `json:"body"`
+			CreatedAt string `json:"created_at"`
+			Author    struct {
+				Username string `json:"username"`
+			} `json:"author"`
+			Categories []struct {
+				Name string `json:"name"`
+			} `json:"categories"`
+		} `json:"posts"`
+	}
+	if err := json.Unmarshal(body, &response); err != nil {
+		t.Fatalf("decode feed response: %v", err)
+	}
+	if len(response.Posts) != 2 {
+		t.Fatalf("feed post count = %d, want 2", len(response.Posts))
+	}
+	if response.Posts[0].Title != "Second feed post" || response.Posts[1].Title != "First feed post" {
+		t.Fatalf("feed titles = %q, %q; want newest first", response.Posts[0].Title, response.Posts[1].Title)
+	}
+	if response.Posts[0].Body != "Second body" || response.Posts[0].Author.Username != "feed-user" || len(response.Posts[0].Categories) != 1 || response.Posts[0].Categories[0].Name != "DevOps" {
+		t.Fatalf("feed post payload = %+v", response.Posts[0])
+	}
+	if response.Posts[0].CreatedAt == "" || response.Posts[1].CreatedAt == "" {
+		t.Fatal("feed response omitted a post timestamp")
 	}
 }
 

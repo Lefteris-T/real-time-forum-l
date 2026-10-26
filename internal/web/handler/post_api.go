@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"forum/internal/service"
 	"forum/internal/validation"
@@ -17,23 +18,83 @@ type postAPIResponse struct {
 	Error   string `json:"error,omitempty"`
 }
 
-// PostAPIHandler creates a categorized post and returns a JSON response for
-// the SPA.
-type PostAPIHandler struct {
-	service PostCreationService
+type postFeedResponse struct {
+	Posts []postFeedItem `json:"posts"`
 }
 
-func NewPostAPIHandler(service PostCreationService) *PostAPIHandler {
-	return &PostAPIHandler{service: service}
+type postFeedItem struct {
+	ID         int64              `json:"id"`
+	Title      string             `json:"title"`
+	Body       string             `json:"body"`
+	CreatedAt  string             `json:"created_at"`
+	Author     postFeedAuthor     `json:"author"`
+	Categories []categoryResponse `json:"categories"`
+	Likes      int                `json:"likes"`
+	Dislikes   int                `json:"dislikes"`
+}
+
+type postFeedAuthor struct {
+	Username string `json:"username"`
+}
+
+// PostAPIHandler lists feed posts and creates categorized posts for the SPA.
+type PostAPIHandler struct {
+	service PostCreationService
+	posts   PostReader
+}
+
+func NewPostAPIHandler(service PostCreationService, posts PostReader) *PostAPIHandler {
+	return &PostAPIHandler{service: service, posts: posts}
 }
 
 func (h *PostAPIHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		w.Header().Set("Allow", http.MethodPost)
+	switch r.Method {
+	case http.MethodGet:
+		h.handleList(w)
+	case http.MethodPost:
+		h.handleCreate(w, r)
+	default:
+		w.Header().Set("Allow", "GET, POST")
 		h.writeJSON(w, http.StatusMethodNotAllowed, postAPIResponse{Error: http.StatusText(http.StatusMethodNotAllowed)})
+	}
+}
+
+func (h *PostAPIHandler) handleList(w http.ResponseWriter) {
+	posts, err := h.posts.List()
+	if err != nil {
+		h.writeJSON(w, http.StatusInternalServerError, postAPIResponse{Error: http.StatusText(http.StatusInternalServerError)})
 		return
 	}
 
+	response := postFeedResponse{Posts: make([]postFeedItem, 0, len(posts))}
+	for _, post := range posts {
+		item := postFeedItem{
+			ID:        post.ID,
+			Title:     post.Title,
+			Body:      post.Body,
+			CreatedAt: post.CreatedAt.Format(time.RFC3339),
+			Author:    postFeedAuthor{Username: post.Author.Username},
+			Categories: make(
+				[]categoryResponse,
+				0,
+				len(post.Categories),
+			),
+			Likes:    post.Likes,
+			Dislikes: post.Dislikes,
+		}
+		for _, category := range post.Categories {
+			item.Categories = append(item.Categories, categoryResponse{
+				ID:   category.ID,
+				Name: category.Name,
+			})
+		}
+		response.Posts = append(response.Posts, item)
+	}
+
+	h.writeJSON(w, http.StatusOK, response)
+}
+
+func (h *PostAPIHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 	user, ok := middleware.CurrentUser(r.Context())
 	if !ok {
 		h.writeJSON(w, http.StatusUnauthorized, postAPIResponse{Error: http.StatusText(http.StatusUnauthorized)})
@@ -80,7 +141,7 @@ func (h *PostAPIHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *PostAPIHandler) writeJSON(w http.ResponseWriter, status int, response postAPIResponse) {
+func (h *PostAPIHandler) writeJSON(w http.ResponseWriter, status int, response any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(response)

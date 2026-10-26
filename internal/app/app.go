@@ -242,7 +242,7 @@ func buildHandler(
 			Logout:          logoutHandler,
 			SessionStatus:   handler.NewSessionStatusHandler(),
 			CategoryList:    handler.NewCategoryListHandler(categories),
-			PostAPI:         handler.NewPostAPIHandler(postService),
+			PostAPI:         handler.NewPostAPIHandler(postService, posts),
 			PostCreation:    postCreationHandler,
 			PostDetail:      postDetailHandler,
 			CommentCreate:   commentHandler,

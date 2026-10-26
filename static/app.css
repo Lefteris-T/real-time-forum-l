@@ -172,6 +172,53 @@ section[hidden] {
   gap: 0.4rem;
 }
 
+.post-feed {
+  display: grid;
+  gap: 1rem;
+}
+
+.feed-post {
+  padding: 1rem;
+  background: #10131a;
+  border: 1px solid #303848;
+  border-radius: 0.6rem;
+}
+
+.feed-post h3 {
+  margin: 0 0 0.35rem;
+}
+
+.feed-post-meta,
+.feed-post-reactions {
+  margin: 0;
+  color: #aeb8c8;
+  font-size: 0.9rem;
+}
+
+.feed-post-body {
+  margin: 0.9rem 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.feed-post-categories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin: 0 0 0.75rem;
+}
+
+.feed-category-tag {
+  padding: 0.2rem 0.5rem;
+  background: #252d3b;
+  border-radius: 999px;
+  font-size: 0.85rem;
+}
+
+.feed-status {
+  margin: 0 0 1rem;
+}
+
 .auth-status {
   max-width: 75rem;
   margin: 0.75rem auto 0;

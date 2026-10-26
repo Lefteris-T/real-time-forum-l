@@ -646,11 +646,17 @@ func TestForumRouterMethods(t *testing.T) {
 			want:   http.StatusNoContent,
 		},
 		{
-			name:   "API post create get rejected",
+			name:   "API post feed",
 			method: http.MethodGet,
 			path:   "/api/posts",
+			want:   http.StatusNoContent,
+		},
+		{
+			name:   "API posts delete rejected",
+			method: http.MethodDelete,
+			path:   "/api/posts",
 			want:   http.StatusMethodNotAllowed,
-			allow:  http.MethodPost,
+			allow:  "GET, POST",
 		},
 		{
 			name:   "new post get",
@@ -809,10 +815,6 @@ func TestForumRouterRejectsGETOnMutationRoutes(t *testing.T) {
 		},
 		{
 			path:  "/posts",
-			allow: http.MethodPost,
-		},
-		{
-			path:  "/api/posts",
 			allow: http.MethodPost,
 		},
 		{
