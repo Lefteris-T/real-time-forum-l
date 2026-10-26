@@ -5,6 +5,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 func TestManagerCreatesSessionCookie(t *testing.T) {
@@ -14,6 +16,8 @@ func TestManagerCreatesSessionCookie(t *testing.T) {
 		false,
 	)
 
+	expiresAfter := 24 * time.Hour
+	createdAfter := time.Now().UTC()
 	rec := httptest.NewRecorder()
 
 	id, err := manager.Create(rec)
@@ -51,6 +55,13 @@ func TestManagerCreatesSessionCookie(t *testing.T) {
 			id,
 		)
 	}
+	if _, err := uuid.Parse(cookie.Value); err != nil {
+		t.Fatalf("cookie value %q is not a UUID: %v", cookie.Value, err)
+	}
+	if cookie.Expires.Before(createdAfter.Add(expiresAfter-time.Second)) ||
+		cookie.Expires.After(time.Now().UTC().Add(expiresAfter+time.Second)) {
+		t.Fatalf("cookie expiry = %v, want about %v from creation", cookie.Expires, expiresAfter)
+	}
 
 	if !cookie.HttpOnly {
 		t.Fatal("cookie HttpOnly = false, want true")
@@ -69,6 +80,42 @@ func TestManagerCreatesSessionCookie(t *testing.T) {
 
 	if cookie.Secure {
 		t.Fatal("cookie Secure = true, want false")
+	}
+}
+
+func TestManagerReadRejectsMissingCookie(t *testing.T) {
+	manager := NewManager("forum_session", time.Hour, false)
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+
+	if id, ok := manager.Read(request); ok || id != "" {
+		t.Fatalf("Read() = (%q, %t), want (empty, false)", id, ok)
+	}
+}
+
+func TestManagerReadRejectsMalformedCookie(t *testing.T) {
+	manager := NewManager("forum_session", time.Hour, false)
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request.AddCookie(&http.Cookie{
+		Name:  "forum_session",
+		Value: "not-a-uuid",
+	})
+
+	if id, ok := manager.Read(request); ok || id != "" {
+		t.Fatalf("Read() = (%q, %t), want (empty, false)", id, ok)
+	}
+}
+
+func TestManagerReadAcceptsUUIDCookie(t *testing.T) {
+	manager := NewManager("forum_session", time.Hour, false)
+	const sessionID = "550e8400-e29b-41d4-a716-446655440000"
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request.AddCookie(&http.Cookie{
+		Name:  "forum_session",
+		Value: sessionID,
+	})
+
+	if id, ok := manager.Read(request); !ok || id != sessionID {
+		t.Fatalf("Read() = (%q, %t), want (%q, true)", id, ok, sessionID)
 	}
 }
 func TestManagerCreatesUniqueSessionIDs(t *testing.T) {
