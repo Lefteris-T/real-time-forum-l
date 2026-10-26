@@ -22,7 +22,8 @@ type FieldError struct {
 }
 
 func (e FieldError) Error() string {
-	return fmt.Sprintf("%s: %s", e.Field, e.Message)
+	field := strings.ReplaceAll(e.Field, "_", " ")
+	return fmt.Sprintf("%s %s", field, e.Message)
 }
 
 func fieldError(field, message string) error {
