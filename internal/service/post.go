@@ -3,11 +3,16 @@ package service
 import (
 	"errors"
 
+	"forum/internal/repository"
 	"forum/internal/validation"
 )
 
 // ErrAuthenticationRequired is shared by protected content operations.
 var ErrAuthenticationRequired = errors.New("authentication required")
+
+// ErrInvalidPostCategory indicates that a submitted category is not in the
+// current category catalogue.
+var ErrInvalidPostCategory = errors.New("selected category is invalid")
 
 type PostCreator interface {
 	Create(
@@ -18,16 +23,23 @@ type PostCreator interface {
 	) (int64, error)
 }
 
+type PostCategoryValidator interface {
+	ValidateIDs(ids []int64) error
+}
+
 // PostService validates post creation before delegating persistence.
 type PostService struct {
-	posts PostCreator
+	posts      PostCreator
+	categories PostCategoryValidator
 }
 
 func NewPostService(
 	posts PostCreator,
+	categories PostCategoryValidator,
 ) *PostService {
 	return &PostService{
-		posts: posts,
+		posts:      posts,
+		categories: categories,
 	}
 }
 
@@ -42,6 +54,12 @@ func (s *PostService) Create(
 
 	validated, err := validation.ValidatePost(input)
 	if err != nil {
+		return 0, err
+	}
+	if err := s.categories.ValidateIDs(validated.CategoryIDs); err != nil {
+		if errors.Is(err, repository.ErrCategoryNotFound) {
+			return 0, ErrInvalidPostCategory
+		}
 		return 0, err
 	}
 

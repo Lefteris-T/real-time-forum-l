@@ -89,7 +89,8 @@ section[hidden] {
 }
 
 .login-form,
-.registration-form {
+.registration-form,
+.post-form {
   display: grid;
   gap: 1rem;
   max-width: 32rem;
@@ -100,7 +101,8 @@ section[hidden] {
   gap: 0.35rem;
 }
 
-.field input {
+.field input,
+.field textarea {
   width: 100%;
   padding: 0.65rem 0.75rem;
   color: inherit;
@@ -110,7 +112,8 @@ section[hidden] {
   border-radius: 0.4rem;
 }
 
-.field input:focus-visible {
+.field input:focus-visible,
+.field textarea:focus-visible {
   outline: 3px solid #7ab7ff;
   outline-offset: 2px;
 }
@@ -129,8 +132,44 @@ section[hidden] {
   color: #ff9c9c;
 }
 
+[data-post-result][data-status="success"] {
+  color: #9be6b0;
+}
+
+[data-post-result][data-status="error"] {
+  color: #ff9c9c;
+}
+
 [data-login-result]:not([hidden]) {
   margin: 0;
+}
+
+[data-post-result]:not([hidden]) {
+  margin: 0;
+}
+
+.category-picker {
+  display: grid;
+  gap: 0.6rem;
+  padding: 0.8rem;
+  border: 1px solid #3b4659;
+  border-radius: 0.4rem;
+}
+
+.category-picker legend {
+  padding: 0 0.35rem;
+}
+
+.category-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.category-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
 }
 
 .auth-status {

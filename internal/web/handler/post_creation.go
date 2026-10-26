@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"forum/internal/model"
+	"forum/internal/service"
 	"forum/internal/validation"
 	"forum/internal/web/middleware"
 	"forum/internal/web/view"
@@ -198,5 +199,6 @@ func isPostValidationError(err error) bool {
 		errors.Is(err, validation.ErrPostTitleTooLong) ||
 		errors.Is(err, validation.ErrPostBodyTooLong) ||
 		errors.Is(err, validation.ErrPostCategoryRequired) ||
-		errors.Is(err, validation.ErrPostDuplicateCategory)
+		errors.Is(err, validation.ErrPostDuplicateCategory) ||
+		errors.Is(err, service.ErrInvalidPostCategory)
 }

@@ -164,6 +164,7 @@ func buildHandler(
 
 	postService := service.NewPostService(
 		posts,
+		categories,
 	)
 
 	commentService := service.NewCommentService(
@@ -240,6 +241,8 @@ func buildHandler(
 			Login:           loginHandler,
 			Logout:          logoutHandler,
 			SessionStatus:   handler.NewSessionStatusHandler(),
+			CategoryList:    handler.NewCategoryListHandler(categories),
+			PostAPI:         handler.NewPostAPIHandler(postService),
 			PostCreation:    postCreationHandler,
 			PostDetail:      postDetailHandler,
 			CommentCreate:   commentHandler,

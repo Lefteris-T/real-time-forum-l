@@ -15,6 +15,7 @@
       <button type="button" data-view="login" data-guest-only>Login</button>
       <button type="button" data-view="register" data-guest-only>Register</button>
       <button type="button" data-view="feed" data-auth-required hidden>Feed</button>
+      <button type="button" data-view="create-post" data-auth-required hidden>Create Post</button>
       <button type="button" data-view="post" data-auth-required hidden>Post detail</button>
       <button type="button" data-view="chat" data-auth-required hidden>Chat</button>
       <button type="button" data-logout hidden>Logout</button>
@@ -156,6 +157,29 @@
       <section data-view-panel="feed" hidden>
         <h2>Feed</h2>
         <p>Posts will appear here.</p>
+      </section>
+
+      <section data-view-panel="create-post" hidden>
+        <h2>Create a post</h2>
+        <form id="post-form" class="post-form" method="post" action="/api/posts" novalidate>
+          <div class="field">
+            <label for="post-title">Title</label>
+            <input id="post-title" name="title" type="text" maxlength="120" required>
+          </div>
+
+          <div class="field">
+            <label for="post-body">Post</label>
+            <textarea id="post-body" name="body" maxlength="5000" rows="8" required></textarea>
+          </div>
+
+          <fieldset class="category-picker">
+            <legend>Categories</legend>
+            <div id="post-categories" data-category-list aria-live="polite">Sign in to load categories.</div>
+          </fieldset>
+
+          <button type="submit" disabled>Create post</button>
+          <p id="post-result" data-post-result role="status" aria-live="polite" hidden></p>
+        </form>
       </section>
 
       <section data-view-panel="post" hidden>

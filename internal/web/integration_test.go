@@ -131,6 +131,7 @@ func newIntegrationEnv(t *testing.T) *integrationEnv {
 
 	postService := service.NewPostService(
 		posts,
+		categories,
 	)
 
 	commentService := service.NewCommentService(
@@ -227,6 +228,8 @@ func newIntegrationEnv(t *testing.T) *integrationEnv {
 			Login:           loginHandler,
 			Logout:          logoutHandler,
 			SessionStatus:   handler.NewSessionStatusHandler(),
+			CategoryList:    handler.NewCategoryListHandler(categories),
+			PostAPI:         handler.NewPostAPIHandler(postService),
 			PostCreation:    postCreationHandler,
 			PostDetail:      postDetailHandler,
 			CommentCreate:   commentHandler,
@@ -1181,6 +1184,149 @@ func TestIntegrationCategoryFilterShowsOnlyMatchingPosts(t *testing.T) {
 		t.Fatal("post from another category appeared")
 	}
 }
+
+func TestIntegrationCategoryListRequiresAuthenticationAndReturnsCategories(t *testing.T) {
+	env := newIntegrationEnv(t)
+	defer env.Server.Close()
+	browser := newIntegrationBrowser(t)
+
+	res, err := browser.Get(env.Server.URL + "/api/categories")
+	if err != nil {
+		t.Fatalf("guest GET /api/categories: %v", err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("guest status = %d, want %d", res.StatusCode, http.StatusUnauthorized)
+	}
+
+	registerAndLogin(t, env.Server, browser, "categories@example.com", "categories-user")
+	res, err = browser.Get(env.Server.URL + "/api/categories")
+	if err != nil {
+		t.Fatalf("authenticated GET /api/categories: %v", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("authenticated status = %d, want %d", res.StatusCode, http.StatusOK)
+	}
+	if got := res.Header.Get("Content-Type"); !strings.HasPrefix(got, "application/json") {
+		t.Fatalf("Content-Type = %q, want application/json", got)
+	}
+	var response struct {
+		Categories []struct {
+			ID   int64  `json:"id"`
+			Name string `json:"name"`
+		} `json:"categories"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&response); err != nil {
+		t.Fatalf("decode categories: %v", err)
+	}
+	want := []string{"General", "Go", "JavaScript", "DevOps"}
+	if len(response.Categories) != len(want) {
+		t.Fatalf("category count = %d, want %d", len(response.Categories), len(want))
+	}
+	for i, name := range want {
+		if response.Categories[i].ID != int64(i+1) || response.Categories[i].Name != name {
+			t.Fatalf("categories[%d] = %+v, want ID %d and name %q", i, response.Categories[i], i+1, name)
+		}
+	}
+}
+
+func TestIntegrationAPICreatesPostForAuthenticatedAuthor(t *testing.T) {
+	env := newIntegrationEnv(t)
+	defer env.Server.Close()
+	browser := newIntegrationBrowser(t)
+	form := url.Values{
+		"title":     {"API post"},
+		"body":      {"Created through the SPA API"},
+		"category":  {"2", "4"},
+		"author_id": {"9999"},
+	}
+
+	guestResponse, err := browser.PostForm(env.Server.URL+"/api/posts", form)
+	if err != nil {
+		t.Fatalf("guest POST /api/posts: %v", err)
+	}
+	guestResponse.Body.Close()
+	if guestResponse.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("guest status = %d, want %d", guestResponse.StatusCode, http.StatusUnauthorized)
+	}
+
+	registerAndLogin(t, env.Server, browser, "api-post@example.com", "api-post-user")
+	res, err := browser.PostForm(env.Server.URL+"/api/posts", form)
+	if err != nil {
+		t.Fatalf("authenticated POST /api/posts: %v", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want %d", res.StatusCode, http.StatusCreated)
+	}
+	if got := res.Header.Get("Content-Type"); !strings.HasPrefix(got, "application/json") {
+		t.Fatalf("Content-Type = %q, want application/json", got)
+	}
+	var response struct {
+		PostID int64 `json:"post_id"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&response); err != nil {
+		t.Fatalf("decode create post response: %v", err)
+	}
+	if response.PostID <= 0 {
+		t.Fatalf("post_id = %d, want positive ID", response.PostID)
+	}
+
+	var authorID int64
+	if err := env.DB.QueryRow(`SELECT author_id FROM posts WHERE id = ?`, response.PostID).Scan(&authorID); err != nil {
+		t.Fatalf("find created post: %v", err)
+	}
+	var registeredUserID int64
+	if err := env.DB.QueryRow(`SELECT id FROM users WHERE username = ?`, "api-post-user").Scan(&registeredUserID); err != nil {
+		t.Fatalf("find registered user: %v", err)
+	}
+	if authorID != registeredUserID {
+		t.Fatalf("post author ID = %d, want authenticated user %d", authorID, registeredUserID)
+	}
+
+	rows, err := env.DB.Query(`SELECT category_id FROM post_categories WHERE post_id = ? ORDER BY category_id`, response.PostID)
+	if err != nil {
+		t.Fatalf("query created post categories: %v", err)
+	}
+	defer rows.Close()
+	var categoryIDs []int64
+	for rows.Next() {
+		var categoryID int64
+		if err := rows.Scan(&categoryID); err != nil {
+			t.Fatalf("scan created category: %v", err)
+		}
+		categoryIDs = append(categoryIDs, categoryID)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("read created categories: %v", err)
+	}
+	if len(categoryIDs) != 2 || categoryIDs[0] != 2 || categoryIDs[1] != 4 {
+		t.Fatalf("created category IDs = %v, want [2 4]", categoryIDs)
+	}
+
+	invalidForm := url.Values{
+		"title":    {"Invalid category post"},
+		"body":     {"This must not persist"},
+		"category": {"9999"},
+	}
+	invalidResponse, err := browser.PostForm(env.Server.URL+"/api/posts", invalidForm)
+	if err != nil {
+		t.Fatalf("POST /api/posts with invalid category: %v", err)
+	}
+	invalidResponse.Body.Close()
+	if invalidResponse.StatusCode != http.StatusBadRequest {
+		t.Fatalf("invalid category status = %d, want %d", invalidResponse.StatusCode, http.StatusBadRequest)
+	}
+	var postCount int
+	if err := env.DB.QueryRow(`SELECT COUNT(*) FROM posts`).Scan(&postCount); err != nil {
+		t.Fatalf("count posts after invalid request: %v", err)
+	}
+	if postCount != 1 {
+		t.Fatalf("post count = %d, want invalid category request to be rejected", postCount)
+	}
+}
+
 func TestIntegrationImportantHTTPStatuses(t *testing.T) {
 	server := newIntegrationServer(t)
 	defer server.Close()
