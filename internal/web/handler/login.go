@@ -1,13 +1,13 @@
 package handler
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 
 	"forum/internal/model"
 	"forum/internal/service"
 	"forum/internal/validation"
-	"forum/internal/web/view"
 )
 
 // LoginService exposes credential verification and session lifecycle behavior.
@@ -28,24 +28,21 @@ type SessionManager interface {
 type LoginHandler struct {
 	service  LoginService
 	sessions SessionManager
-	renderer *view.Renderer
 }
 
-type loginPageData struct {
-	Identifier string
-	Error      string
+type authResponse struct {
+	Message string `json:"message,omitempty"`
+	Error   string `json:"error,omitempty"`
 }
 
 // NewLoginHandler constructs login HTTP behavior.
 func NewLoginHandler(
 	service LoginService,
 	sessions SessionManager,
-	renderer *view.Renderer,
 ) *LoginHandler {
 	return &LoginHandler{
 		service:  service,
 		sessions: sessions,
-		renderer: renderer,
 	}
 }
 
@@ -57,33 +54,14 @@ func (h *LoginHandler) ServeHTTP(
 ) {
 	switch r.Method {
 	case http.MethodGet:
-		h.handleGet(w)
+		http.Redirect(w, r, "/", http.StatusSeeOther)
 
 	case http.MethodPost:
 		h.handlePost(w, r)
 
 	default:
 		w.Header().Set("Allow", "GET, POST")
-		http.Error(
-			w,
-			http.StatusText(http.StatusMethodNotAllowed),
-			http.StatusMethodNotAllowed,
-		)
-	}
-}
-
-func (h *LoginHandler) handleGet(w http.ResponseWriter) {
-	if err := h.renderer.Render(
-		w,
-		http.StatusOK,
-		"login.html",
-		loginPageData{},
-	); err != nil {
-		http.Error(
-			w,
-			http.StatusText(http.StatusInternalServerError),
-			http.StatusInternalServerError,
-		)
+		writeAuthJSON(w, http.StatusMethodNotAllowed, authResponse{Error: http.StatusText(http.StatusMethodNotAllowed)})
 	}
 }
 
@@ -92,13 +70,7 @@ func (h *LoginHandler) handlePost(
 	r *http.Request,
 ) {
 	if err := r.ParseForm(); err != nil {
-		h.renderForm(
-			w,
-			http.StatusBadRequest,
-			loginPageData{
-				Error: "Invalid form",
-			},
-		)
+		writeAuthJSON(w, http.StatusBadRequest, authResponse{Error: "invalid form"})
 		return
 	}
 
@@ -109,35 +81,15 @@ func (h *LoginHandler) handlePost(
 
 	user, err := h.service.Login(input)
 	if err != nil {
-		data := loginPageData{
-			Identifier: input.Identifier,
-		}
-
 		switch {
 		case errors.Is(err, service.ErrInvalidCredentials):
-			data.Error = "Invalid nickname/email or password"
-
-			h.renderForm(
-				w,
-				http.StatusUnauthorized,
-				data,
-			)
+			writeAuthJSON(w, http.StatusUnauthorized, authResponse{Error: "Invalid nickname/email or password"})
 
 		case errors.Is(err, service.ErrInvalidLogin):
-			data.Error = err.Error()
-
-			h.renderForm(
-				w,
-				http.StatusBadRequest,
-				data,
-			)
+			writeAuthJSON(w, http.StatusBadRequest, authResponse{Error: err.Error()})
 
 		default:
-			http.Error(
-				w,
-				http.StatusText(http.StatusInternalServerError),
-				http.StatusInternalServerError,
-			)
+			writeAuthJSON(w, http.StatusInternalServerError, authResponse{Error: http.StatusText(http.StatusInternalServerError)})
 		}
 
 		return
@@ -145,11 +97,7 @@ func (h *LoginHandler) handlePost(
 
 	sessionID, err := h.sessions.Create(w)
 	if err != nil {
-		http.Error(
-			w,
-			http.StatusText(http.StatusInternalServerError),
-			http.StatusInternalServerError,
-		)
+		writeAuthJSON(w, http.StatusInternalServerError, authResponse{Error: http.StatusText(http.StatusInternalServerError)})
 		return
 	}
 
@@ -159,37 +107,19 @@ func (h *LoginHandler) handlePost(
 	); err != nil {
 		h.sessions.Clear(w)
 
-		http.Error(
-			w,
-			http.StatusText(http.StatusInternalServerError),
-			http.StatusInternalServerError,
-		)
+		writeAuthJSON(w, http.StatusInternalServerError, authResponse{Error: http.StatusText(http.StatusInternalServerError)})
 		return
 	}
 
-	http.Redirect(
-		w,
-		r,
-		"/",
-		http.StatusSeeOther,
-	)
+	writeAuthJSON(w, http.StatusOK, authResponse{Message: "Login successful."})
 }
 
-func (h *LoginHandler) renderForm(
+func writeAuthJSON(
 	w http.ResponseWriter,
 	status int,
-	data loginPageData,
+	response authResponse,
 ) {
-	if err := h.renderer.Render(
-		w,
-		status,
-		"login.html",
-		data,
-	); err != nil {
-		http.Error(
-			w,
-			http.StatusText(http.StatusInternalServerError),
-			http.StatusInternalServerError,
-		)
-	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(response)
 }

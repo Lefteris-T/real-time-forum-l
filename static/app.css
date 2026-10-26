@@ -88,6 +88,7 @@ section[hidden] {
   display: none;
 }
 
+.login-form,
 .registration-form {
   display: grid;
   gap: 1rem;
@@ -118,11 +119,31 @@ section[hidden] {
   margin: 0;
 }
 
-[data-registration-result][data-status="success"] {
+[data-registration-result][data-status="success"],
+[data-login-result][data-status="success"] {
   color: #9be6b0;
 }
 
-[data-registration-result][data-status="error"] {
+[data-registration-result][data-status="error"],
+[data-login-result][data-status="error"] {
+  color: #ff9c9c;
+}
+
+[data-login-result]:not([hidden]) {
+  margin: 0;
+}
+
+.auth-status {
+  max-width: 75rem;
+  margin: 0.75rem auto 0;
+  padding: 0 1.5rem;
+}
+
+.auth-status[data-status="success"] {
+  color: #9be6b0;
+}
+
+.auth-status[data-status="error"] {
   color: #ff9c9c;
 }
 
@@ -136,6 +157,10 @@ section[hidden] {
   .layout {
     grid-template-columns: 1fr;
     padding: 1rem;
+  }
+
+  .auth-status {
+    padding: 0 1rem;
   }
 
   aside {

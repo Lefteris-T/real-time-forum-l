@@ -2,6 +2,7 @@ package web
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -179,7 +180,6 @@ func newIntegrationEnv(t *testing.T) *integrationEnv {
 	loginHandler := handler.NewLoginHandler(
 		loginService,
 		sessionManager,
-		renderer,
 	)
 
 	logoutHandler := handler.NewLogoutHandler(
@@ -226,6 +226,7 @@ func newIntegrationEnv(t *testing.T) *integrationEnv {
 			Register:        registerHandler,
 			Login:           loginHandler,
 			Logout:          logoutHandler,
+			SessionStatus:   handler.NewSessionStatusHandler(),
 			PostCreation:    postCreationHandler,
 			PostDetail:      postDetailHandler,
 			CommentCreate:   commentHandler,
@@ -359,19 +360,15 @@ func TestIntegrationRegistrationAndLogin(t *testing.T) {
 			}
 			defer res.Body.Close()
 
-			if res.StatusCode != http.StatusSeeOther {
+			if res.StatusCode != http.StatusOK {
 				t.Fatalf(
 					"login status = %d, want %d",
 					res.StatusCode,
-					http.StatusSeeOther,
+					http.StatusOK,
 				)
 			}
-
-			if got := res.Header.Get("Location"); got != "/" {
-				t.Fatalf(
-					"login Location = %q, want /",
-					got,
-				)
+			if got := res.Header.Get("Content-Type"); !strings.HasPrefix(got, "application/json") {
+				t.Fatalf("login Content-Type = %q, want application/json", got)
 			}
 		})
 	}
@@ -432,11 +429,11 @@ func registerAndLogin(
 		t.Fatalf("POST /login: %v", err)
 	}
 
-	if res.StatusCode != http.StatusSeeOther {
+	if res.StatusCode != http.StatusOK {
 		t.Fatalf(
 			"login status = %d, want %d",
 			res.StatusCode,
-			http.StatusSeeOther,
+			http.StatusOK,
 		)
 	}
 
@@ -1290,34 +1287,27 @@ func TestIntegrationInvalidRegistrationReturns400(t *testing.T) {
 	}
 }
 
-func TestIntegrationLoginFormDelegatesValidationToServer(t *testing.T) {
+func TestIntegrationLoginRouteRedirectsToSPAShellAndValidatesInput(t *testing.T) {
 	server := newIntegrationServer(t)
 	defer server.Close()
 
 	{
 		const path = "/login"
-		res, err := http.Get(server.URL + path)
+		client := &http.Client{CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse
+		}}
+		res, err := client.Get(server.URL + path)
 		if err != nil {
 			t.Fatalf("GET %s: %v", path, err)
 		}
-
-		body, err := io.ReadAll(res.Body)
 		res.Body.Close()
-		if err != nil {
-			t.Fatalf("read GET %s response: %v", path, err)
-		}
-
-		if res.StatusCode != http.StatusOK {
+		if res.StatusCode != http.StatusSeeOther || res.Header.Get("Location") != "/" {
 			t.Fatalf(
-				"GET %s status = %d, want %d",
+				"GET %s response = %d, Location %q; want redirect to SPA shell",
 				path,
 				res.StatusCode,
-				http.StatusOK,
+				res.Header.Get("Location"),
 			)
-		}
-
-		if !strings.Contains(string(body), "novalidate") {
-			t.Fatalf("GET %s form does not delegate validation to server", path)
 		}
 	}
 
@@ -1519,8 +1509,8 @@ func TestIntegrationLogoutRevokesSessionAndProtectedAccess(t *testing.T) {
 		t.Fatalf("POST /logout: %v", err)
 	}
 	res.Body.Close()
-	if res.StatusCode != http.StatusSeeOther {
-		t.Fatalf("logout status = %d, want %d", res.StatusCode, http.StatusSeeOther)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("logout status = %d, want %d", res.StatusCode, http.StatusOK)
 	}
 
 	clearedCookie := false
@@ -1555,6 +1545,50 @@ func TestIntegrationLogoutRevokesSessionAndProtectedAccess(t *testing.T) {
 	if res.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("old session status = %d, want %d", res.StatusCode, http.StatusUnauthorized)
 	}
+}
+
+func TestIntegrationSessionStatusTracksLoginAndLogout(t *testing.T) {
+	env := newIntegrationEnv(t)
+	defer env.Server.Close()
+	browser := newIntegrationBrowser(t)
+
+	checkStatus := func(wantAuthenticated bool) {
+		t.Helper()
+		res, err := browser.Get(env.Server.URL + "/api/session")
+		if err != nil {
+			t.Fatalf("GET /api/session: %v", err)
+		}
+		defer res.Body.Close()
+		if res.StatusCode != http.StatusOK {
+			t.Fatalf("session status response = %d, want %d", res.StatusCode, http.StatusOK)
+		}
+		if got := res.Header.Get("Content-Type"); !strings.HasPrefix(got, "application/json") {
+			t.Fatalf("Content-Type = %q, want application/json", got)
+		}
+		var response struct {
+			Authenticated bool `json:"authenticated"`
+		}
+		if err := json.NewDecoder(res.Body).Decode(&response); err != nil {
+			t.Fatalf("decode session status: %v", err)
+		}
+		if response.Authenticated != wantAuthenticated {
+			t.Fatalf("authenticated = %t, want %t", response.Authenticated, wantAuthenticated)
+		}
+	}
+
+	checkStatus(false)
+	registerAndLogin(t, env.Server, browser, "session-status@example.com", "session-status-user")
+	checkStatus(true)
+
+	res, err := browser.PostForm(env.Server.URL+"/logout", url.Values{})
+	if err != nil {
+		t.Fatalf("POST /logout: %v", err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("logout status = %d, want %d", res.StatusCode, http.StatusOK)
+	}
+	checkStatus(false)
 }
 
 func TestIntegrationSQLiteStoresRegisteredUserWithBcryptHash(t *testing.T) {

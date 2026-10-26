@@ -26,33 +26,18 @@ func (h *LogoutHandler) ServeHTTP(
 ) {
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", "POST")
-
-		http.Error(
-			w,
-			http.StatusText(http.StatusMethodNotAllowed),
-			http.StatusMethodNotAllowed,
-		)
+		writeAuthJSON(w, http.StatusMethodNotAllowed, authResponse{Error: http.StatusText(http.StatusMethodNotAllowed)})
 		return
 	}
 
 	sessionID, ok := h.sessions.Read(r)
 	if ok {
 		if err := h.service.Logout(sessionID); err != nil {
-			http.Error(
-				w,
-				http.StatusText(http.StatusInternalServerError),
-				http.StatusInternalServerError,
-			)
+			writeAuthJSON(w, http.StatusInternalServerError, authResponse{Error: http.StatusText(http.StatusInternalServerError)})
 			return
 		}
 	}
 
 	h.sessions.Clear(w)
-
-	http.Redirect(
-		w,
-		r,
-		"/",
-		http.StatusSeeOther,
-	)
+	writeAuthJSON(w, http.StatusOK, authResponse{Message: "Logged out."})
 }

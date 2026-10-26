@@ -12,19 +12,47 @@
     <h1>Real-Time Forum</h1>
 
     <nav aria-label="Main navigation">
-      <button type="button" data-view="login">Login</button>
-      <button type="button" data-view="register">Register</button>
-      <button type="button" data-view="feed">Feed</button>
-      <button type="button" data-view="post">Post detail</button>
-      <button type="button" data-view="chat">Chat</button>
+      <button type="button" data-view="login" data-guest-only>Login</button>
+      <button type="button" data-view="register" data-guest-only>Register</button>
+      <button type="button" data-view="feed" data-auth-required hidden>Feed</button>
+      <button type="button" data-view="post" data-auth-required hidden>Post detail</button>
+      <button type="button" data-view="chat" data-auth-required hidden>Chat</button>
+      <button type="button" data-logout hidden>Logout</button>
     </nav>
   </header>
+
+  <p id="auth-status" class="auth-status" role="status" aria-live="polite" hidden></p>
 
   <div class="layout">
     <main>
       <section data-view-panel="login">
         <h2>Login</h2>
-        <p>Login form will be added in a later phase.</p>
+        <form id="login-form" class="login-form" method="post" action="/login" novalidate>
+          <div class="field">
+            <label for="login-identifier">Nickname or email</label>
+            <input
+              id="login-identifier"
+              name="identifier"
+              type="text"
+              autocomplete="username"
+              required
+            >
+          </div>
+
+          <div class="field">
+            <label for="login-password">Password</label>
+            <input
+              id="login-password"
+              name="password"
+              type="password"
+              autocomplete="current-password"
+              required
+            >
+          </div>
+
+          <button type="submit">Login</button>
+          <p id="login-result" data-login-result role="status" aria-live="polite" hidden></p>
+        </form>
       </section>
 
       <section data-view-panel="register" hidden>

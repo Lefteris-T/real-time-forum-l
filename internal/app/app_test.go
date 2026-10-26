@@ -169,11 +169,11 @@ func TestGuestAccessBoundaries(t *testing.T) {
 	}{
 		{name: "SPA shell", method: http.MethodGet, path: "/", status: http.StatusOK},
 		{name: "SPA stylesheet", method: http.MethodGet, path: "/static/app.css", status: http.StatusOK},
-		{name: "login page", method: http.MethodGet, path: "/login", status: http.StatusOK},
+		{name: "login route returns to SPA shell", method: http.MethodGet, path: "/login", status: http.StatusSeeOther},
 		{name: "registration route returns to SPA shell", method: http.MethodGet, path: "/register", status: http.StatusSeeOther},
 		{name: "login endpoint", method: http.MethodPost, path: "/login", status: http.StatusBadRequest},
 		{name: "registration endpoint", method: http.MethodPost, path: "/register", status: http.StatusBadRequest},
-		{name: "logout endpoint clears guest cookie", method: http.MethodPost, path: "/logout", status: http.StatusSeeOther},
+		{name: "logout endpoint clears guest cookie", method: http.MethodPost, path: "/logout", status: http.StatusOK},
 		{name: "new post form", method: http.MethodGet, path: "/posts/new", status: http.StatusUnauthorized},
 		{name: "create post", method: http.MethodPost, path: "/posts", status: http.StatusUnauthorized},
 		{name: "post detail", method: http.MethodGet, path: "/posts/1", status: http.StatusUnauthorized},

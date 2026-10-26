@@ -21,6 +21,7 @@ type Handlers struct {
 	Register        http.Handler
 	Login           http.Handler
 	Logout          http.Handler
+	SessionStatus   http.Handler
 	PostCreation    http.Handler
 	PostDetail      http.Handler
 	CommentCreate   http.Handler
@@ -120,6 +121,11 @@ func NewForumRouter(h Handlers) http.Handler {
 			Methods: []string{http.MethodPost},
 			Pattern: "/logout",
 			Handler: h.Logout,
+		},
+		{
+			Methods: []string{http.MethodGet},
+			Pattern: "/api/session",
+			Handler: h.SessionStatus,
 		},
 		{
 			Methods: []string{http.MethodGet},

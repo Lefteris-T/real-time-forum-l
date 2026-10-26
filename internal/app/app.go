@@ -197,7 +197,6 @@ func buildHandler(
 	loginHandler := handler.NewLoginHandler(
 		loginService,
 		sessionManager,
-		renderer,
 	)
 
 	logoutHandler := handler.NewLogoutHandler(
@@ -240,6 +239,7 @@ func buildHandler(
 			Register:        registerHandler,
 			Login:           loginHandler,
 			Logout:          logoutHandler,
+			SessionStatus:   handler.NewSessionStatusHandler(),
 			PostCreation:    postCreationHandler,
 			PostDetail:      postDetailHandler,
 			CommentCreate:   commentHandler,

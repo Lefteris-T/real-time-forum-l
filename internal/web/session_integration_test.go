@@ -6,7 +6,6 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -18,7 +17,6 @@ import (
 	"forum/internal/session"
 	"forum/internal/web/handler"
 	"forum/internal/web/middleware"
-	"forum/internal/web/view"
 )
 
 func TestSingleActiveBrowserSession(t *testing.T) {
@@ -72,41 +70,9 @@ func TestSingleActiveBrowserSession(t *testing.T) {
 		24*time.Hour,
 	)
 
-	templateDir := t.TempDir()
-
-	err = os.WriteFile(
-		filepath.Join(templateDir, "login.html"),
-		[]byte(`
-			<!doctype html>
-			<html>
-			<body>
-				{{if .Error}}
-					<p>{{.Error}}</p>
-				{{end}}
-
-				<form method="post" action="/login">
-					<input name="identifier" value="{{.Identifier}}">
-					<input name="password" type="password">
-					<button type="submit">Login</button>
-				</form>
-			</body>
-			</html>
-		`),
-		0o644,
-	)
-	if err != nil {
-		t.Fatalf("WriteFile(): %v", err)
-	}
-
-	renderer, err := view.NewRenderer(templateDir)
-	if err != nil {
-		t.Fatalf("view.NewRenderer(): %v", err)
-	}
-
 	loginHandler := handler.NewLoginHandler(
 		loginService,
 		sessionManager,
-		renderer,
 	)
 
 	mux := http.NewServeMux()
