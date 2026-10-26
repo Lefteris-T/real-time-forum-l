@@ -23,17 +23,6 @@ type PostListItem struct {
 	Dislikes   int
 }
 
-// CommentView combines comment data with author and reaction totals.
-type CommentView struct {
-	ID        int64
-	PostID    int64
-	Body      string
-	CreatedAt time.Time
-	Author    model.User
-	Likes     int
-	Dislikes  int
-}
-
 // PostDetail is the complete read model for one post page.
 type PostDetail struct {
 	ID         int64
@@ -49,13 +38,15 @@ type PostDetail struct {
 
 // PostRepository owns post writes and the composed queries used by forum views.
 type PostRepository struct {
-	db *sql.DB
+	db       *sql.DB
+	comments *CommentRepository
 }
 
 // NewPostRepository binds post operations to db.
 func NewPostRepository(db *sql.DB) *PostRepository {
 	return &PostRepository{
-		db: db,
+		db:       db,
+		comments: NewCommentRepository(db),
 	}
 }
 
@@ -389,96 +380,12 @@ func (r *PostRepository) Detail(
 		return PostDetail{}, err
 	}
 
-	post.Comments, err = r.commentsForPost(post.ID)
+	post.Comments, err = r.comments.ListByPost(post.ID)
 	if err != nil {
 		return PostDetail{}, err
 	}
 
 	return post, nil
-}
-func (r *PostRepository) commentsForPost(
-	postID int64,
-) ([]CommentView, error) {
-	rows, err := r.db.Query(`
-		SELECT
-			c.id,
-			c.post_id,
-			c.body,
-			c.created_at,
-			u.id,
-			u.email,
-			u.username,
-			u.created_at,
-			COALESCE(SUM(
-				CASE WHEN cr.value = 1 THEN 1 ELSE 0 END
-			), 0) AS likes,
-			COALESCE(SUM(
-				CASE WHEN cr.value = -1 THEN 1 ELSE 0 END
-			), 0) AS dislikes
-		FROM comments c
-		JOIN users u
-			ON u.id = c.author_id
-		LEFT JOIN comment_reactions cr
-			ON cr.comment_id = c.id
-		WHERE c.post_id = ?
-		GROUP BY c.id
-		ORDER BY c.created_at ASC, c.id ASC
-	`, postID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var comments []CommentView
-
-	for rows.Next() {
-		var comment CommentView
-		var commentCreatedAt string
-		var userCreatedAt string
-
-		err := rows.Scan(
-			&comment.ID,
-			&comment.PostID,
-			&comment.Body,
-			&commentCreatedAt,
-			&comment.Author.ID,
-			&comment.Author.Email,
-			&comment.Author.Username,
-			&userCreatedAt,
-			&comment.Likes,
-			&comment.Dislikes,
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		comment.CreatedAt, err = time.Parse(
-			time.RFC3339,
-			commentCreatedAt,
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		comment.Author.CreatedAt, err = time.Parse(
-			time.RFC3339,
-			userCreatedAt,
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		comments = append(
-			comments,
-			comment,
-		)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	return comments, nil
 }
 
 // ListByCategory returns posts carrying one validated category.
