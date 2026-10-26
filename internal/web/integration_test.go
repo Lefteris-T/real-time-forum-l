@@ -174,10 +174,7 @@ func newIntegrationEnv(t *testing.T) *integrationEnv {
 	// Handlers
 	// -------------------------------------------------
 
-	registerHandler := handler.NewRegisterHandler(
-		authService,
-		renderer,
-	)
+	registerHandler := handler.NewRegisterHandler(authService)
 
 	loginHandler := handler.NewLoginHandler(
 		loginService,
@@ -333,19 +330,15 @@ func TestIntegrationRegistrationAndLogin(t *testing.T) {
 		t.Fatalf("POST /register: %v", err)
 	}
 
-	if res.StatusCode != http.StatusSeeOther {
+	if res.StatusCode != http.StatusCreated {
 		t.Fatalf(
 			"register status = %d, want %d",
 			res.StatusCode,
-			http.StatusSeeOther,
+			http.StatusCreated,
 		)
 	}
-
-	if got := res.Header.Get("Location"); got != "/login" {
-		t.Fatalf(
-			"register Location = %q, want /login",
-			got,
-		)
+	if res.Header.Get("Set-Cookie") != "" {
+		t.Fatal("registration unexpectedly created a login session")
 	}
 
 	res.Body.Close()
@@ -414,11 +407,11 @@ func registerAndLogin(
 		t.Fatalf("POST /register: %v", err)
 	}
 
-	if res.StatusCode != http.StatusSeeOther {
+	if res.StatusCode != http.StatusCreated {
 		t.Fatalf(
 			"register status = %d, want %d",
 			res.StatusCode,
-			http.StatusSeeOther,
+			http.StatusCreated,
 		)
 	}
 
@@ -1297,11 +1290,12 @@ func TestIntegrationInvalidRegistrationReturns400(t *testing.T) {
 	}
 }
 
-func TestIntegrationAuthFormsDelegateValidationToServer(t *testing.T) {
+func TestIntegrationLoginFormDelegatesValidationToServer(t *testing.T) {
 	server := newIntegrationServer(t)
 	defer server.Close()
 
-	for _, path := range []string{"/login", "/register"} {
+	{
+		const path = "/login"
 		res, err := http.Get(server.URL + path)
 		if err != nil {
 			t.Fatalf("GET %s: %v", path, err)
@@ -1405,29 +1399,76 @@ func TestIntegrationDuplicateRegistrationReturns409(t *testing.T) {
 	}
 	res.Body.Close()
 
-	if res.StatusCode != http.StatusSeeOther {
+	if res.StatusCode != http.StatusCreated {
 		t.Fatalf(
 			"first registration status = %d, want %d",
 			res.StatusCode,
-			http.StatusSeeOther,
+			http.StatusCreated,
 		)
 	}
 
-	res, err = browser.PostForm(
-		server.URL+"/register",
-		form,
-	)
-	if err != nil {
-		t.Fatalf("duplicate POST /register: %v", err)
+	duplicates := []struct {
+		name        string
+		form        url.Values
+		wantMessage string
+	}{
+		{
+			name: "duplicate email",
+			form: url.Values{
+				"email":      {"alice@example.com"},
+				"username":   {"alice-email-duplicate"},
+				"password":   {"strong-password-123"},
+				"age":        {"30"},
+				"gender":     {"test"},
+				"first_name": {"Test"},
+				"last_name":  {"User"},
+			},
+			wantMessage: "email already exists",
+		},
+		{
+			name: "duplicate nickname",
+			form: url.Values{
+				"email":      {"bob@example.com"},
+				"username":   {"alice"},
+				"password":   {"strong-password-123"},
+				"age":        {"30"},
+				"gender":     {"test"},
+				"first_name": {"Test"},
+				"last_name":  {"User"},
+			},
+			wantMessage: "username already exists",
+		},
 	}
-	defer res.Body.Close()
 
-	if res.StatusCode != http.StatusConflict {
-		t.Fatalf(
-			"duplicate registration status = %d, want %d",
-			res.StatusCode,
-			http.StatusConflict,
-		)
+	for _, duplicate := range duplicates {
+		t.Run(duplicate.name, func(t *testing.T) {
+			res, err := browser.PostForm(
+				server.URL+"/register",
+				duplicate.form,
+			)
+			if err != nil {
+				t.Fatalf("duplicate POST /register: %v", err)
+			}
+			defer res.Body.Close()
+
+			body, err := io.ReadAll(res.Body)
+			if err != nil {
+				t.Fatalf("read duplicate response: %v", err)
+			}
+			if res.StatusCode != http.StatusConflict {
+				t.Fatalf(
+					"duplicate registration status = %d, want %d",
+					res.StatusCode,
+					http.StatusConflict,
+				)
+			}
+			if got := res.Header.Get("Content-Type"); !strings.HasPrefix(got, "application/json") {
+				t.Fatalf("Content-Type = %q, want application/json", got)
+			}
+			if !strings.Contains(string(body), duplicate.wantMessage) {
+				t.Fatalf("response %q does not contain %q", body, duplicate.wantMessage)
+			}
+		})
 	}
 }
 
@@ -1545,22 +1586,37 @@ func TestIntegrationSQLiteStoresRegisteredUserWithBcryptHash(t *testing.T) {
 	}
 	res.Body.Close()
 
-	if res.StatusCode != http.StatusSeeOther {
+	if res.StatusCode != http.StatusCreated {
 		t.Fatalf(
 			"status = %d, want %d",
 			res.StatusCode,
-			http.StatusSeeOther,
+			http.StatusCreated,
 		)
+	}
+
+	if res.Header.Get("Set-Cookie") != "" {
+		t.Fatal("registration unexpectedly created a login session")
+	}
+	var sessionCount int
+	if err := env.DB.QueryRow("SELECT COUNT(*) FROM sessions").Scan(&sessionCount); err != nil {
+		t.Fatalf("query registration sessions: %v", err)
+	}
+	if sessionCount != 0 {
+		t.Fatalf("session count = %d after registration, want 0", sessionCount)
 	}
 
 	var (
 		email        string
 		username     string
+		age          int
+		gender       string
+		firstName    string
+		lastName     string
 		passwordHash string
 	)
 
 	err = env.DB.QueryRow(`
-		SELECT email, username, password_hash
+		SELECT email, username, age, gender, first_name, last_name, password_hash
 		FROM users
 		WHERE email = ?
 	`,
@@ -1568,6 +1624,10 @@ func TestIntegrationSQLiteStoresRegisteredUserWithBcryptHash(t *testing.T) {
 	).Scan(
 		&email,
 		&username,
+		&age,
+		&gender,
+		&firstName,
+		&lastName,
 		&passwordHash,
 	)
 	if err != nil {
@@ -1587,6 +1647,15 @@ func TestIntegrationSQLiteStoresRegisteredUserWithBcryptHash(t *testing.T) {
 			"username = %q, want %q",
 			username,
 			"alice",
+		)
+	}
+	if age != 30 || gender != "test" || firstName != "Test" || lastName != "User" {
+		t.Fatalf(
+			"profile = age:%d gender:%q first:%q last:%q, want submitted profile",
+			age,
+			gender,
+			firstName,
+			lastName,
 		)
 	}
 

@@ -29,7 +29,100 @@
 
       <section data-view-panel="register" hidden>
         <h2>Register</h2>
-        <p>Registration form will be added in a later phase.</p>
+        <form
+          id="registration-form"
+          class="registration-form"
+          method="post"
+          action="/register"
+          novalidate
+        >
+          <div class="field">
+            <label for="register-username">Nickname</label>
+            <input
+              id="register-username"
+              name="username"
+              type="text"
+              minlength="3"
+              maxlength="32"
+              autocomplete="username"
+              required
+            >
+          </div>
+
+          <div class="field">
+            <label for="register-age">Age</label>
+            <input
+              id="register-age"
+              name="age"
+              type="number"
+              min="1"
+              max="120"
+              step="1"
+              required
+            >
+          </div>
+
+          <div class="field">
+            <label for="register-gender">Gender</label>
+            <input id="register-gender" name="gender" type="text" required>
+          </div>
+
+          <div class="field">
+            <label for="register-first-name">First name</label>
+            <input
+              id="register-first-name"
+              name="first_name"
+              type="text"
+              autocomplete="given-name"
+              required
+            >
+          </div>
+
+          <div class="field">
+            <label for="register-last-name">Last name</label>
+            <input
+              id="register-last-name"
+              name="last_name"
+              type="text"
+              autocomplete="family-name"
+              required
+            >
+          </div>
+
+          <div class="field">
+            <label for="register-email">Email</label>
+            <input
+              id="register-email"
+              name="email"
+              type="email"
+              maxlength="254"
+              autocomplete="email"
+              required
+            >
+          </div>
+
+          <div class="field">
+            <label for="register-password">Password</label>
+            <input
+              id="register-password"
+              name="password"
+              type="password"
+              minlength="8"
+              maxlength="72"
+              autocomplete="new-password"
+              required
+            >
+          </div>
+
+          <button type="submit">Create account</button>
+          <p
+            id="registration-result"
+            data-registration-result
+            role="status"
+            aria-live="polite"
+            hidden
+          ></p>
+        </form>
       </section>
 
       <section data-view-panel="feed" hidden>

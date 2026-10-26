@@ -3,15 +3,14 @@
 package handler
 
 import (
+	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"strconv"
 
 	"forum/internal/repository"
 	"forum/internal/service"
 	"forum/internal/validation"
-	"forum/internal/web/view"
 )
 
 // RegistrationService is the account-creation behavior required by this handler.
@@ -19,69 +18,39 @@ type RegistrationService interface {
 	Register(input validation.RegistrationInput) (int64, error)
 }
 
-func parseAge(value string) int {
-	age, _ := strconv.Atoi(value)
-	return age
+type registrationResponse struct {
+	Message string `json:"message,omitempty"`
+	Error   string `json:"error,omitempty"`
 }
 
-// RegisterHandler serves the registration form and account submission.
+// RegisterHandler accepts SPA registration requests and responds with JSON.
 type RegisterHandler struct {
-	service  RegistrationService
-	renderer *view.Renderer
-}
-
-type registerPageData struct {
-	Email    string
-	Username string
-	Error    string
+	service RegistrationService
 }
 
 // NewRegisterHandler constructs registration HTTP behavior.
-func NewRegisterHandler(
-	service RegistrationService,
-	renderer *view.Renderer,
-) *RegisterHandler {
-	return &RegisterHandler{
-		service:  service,
-		renderer: renderer,
-	}
+func NewRegisterHandler(service RegistrationService) *RegisterHandler {
+	return &RegisterHandler{service: service}
 }
 
-// ServeHTTP renders GET requests and maps POST outcomes to audit-required status
-// codes without exposing persistence errors.
+// ServeHTTP sends GET requests to the single-page application and maps POST
+// outcomes to a small JSON response the client can display.
 func (h *RegisterHandler) ServeHTTP(
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
 	switch r.Method {
 	case http.MethodGet:
-		h.handleGet(w)
+		http.Redirect(w, r, "/", http.StatusSeeOther)
 
 	case http.MethodPost:
 		h.handlePost(w, r)
 
 	default:
 		w.Header().Set("Allow", "GET, POST")
-		http.Error(
-			w,
-			http.StatusText(http.StatusMethodNotAllowed),
-			http.StatusMethodNotAllowed,
-		)
-	}
-}
-
-func (h *RegisterHandler) handleGet(w http.ResponseWriter) {
-	if err := h.renderer.Render(
-		w,
-		http.StatusOK,
-		"register.html",
-		registerPageData{},
-	); err != nil {
-		http.Error(
-			w,
-			http.StatusText(http.StatusInternalServerError),
-			http.StatusInternalServerError,
-		)
+		h.writeJSON(w, http.StatusMethodNotAllowed, registrationResponse{
+			Error: http.StatusText(http.StatusMethodNotAllowed),
+		})
 	}
 }
 
@@ -90,13 +59,9 @@ func (h *RegisterHandler) handlePost(
 	r *http.Request,
 ) {
 	if err := r.ParseForm(); err != nil {
-		h.renderForm(
-			w,
-			http.StatusBadRequest,
-			registerPageData{
-				Error: "Invalid form",
-			},
-		)
+		h.writeJSON(w, http.StatusBadRequest, registrationResponse{
+			Error: "invalid form",
+		})
 		return
 	}
 
@@ -112,67 +77,42 @@ func (h *RegisterHandler) handlePost(
 
 	_, err := h.service.Register(input)
 	if err == nil {
-		http.Redirect(
-			w,
-			r,
-			"/login",
-			http.StatusSeeOther,
-		)
+		h.writeJSON(w, http.StatusCreated, registrationResponse{
+			Message: "Registration successful. Please log in.",
+		})
 		return
-	}
-
-	data := registerPageData{
-		Email:    input.Email,
-		Username: input.Username,
 	}
 
 	switch {
 	case errors.Is(err, repository.ErrEmailExists),
 		errors.Is(err, repository.ErrUsernameExists):
-
-		data.Error = err.Error()
-
-		h.renderForm(
-			w,
-			http.StatusConflict,
-			data,
-		)
+		h.writeJSON(w, http.StatusConflict, registrationResponse{
+			Error: err.Error(),
+		})
 
 	case errors.Is(err, service.ErrInvalidRegistration):
-		data.Error = err.Error()
-
-		h.renderForm(
-			w,
-			http.StatusBadRequest,
-			data,
-		)
+		h.writeJSON(w, http.StatusBadRequest, registrationResponse{
+			Error: err.Error(),
+		})
 
 	default:
-		http.Error(
-			w,
-			http.StatusText(http.StatusInternalServerError),
-			http.StatusInternalServerError,
-		)
+		h.writeJSON(w, http.StatusInternalServerError, registrationResponse{
+			Error: http.StatusText(http.StatusInternalServerError),
+		})
 	}
 }
 
-func (h *RegisterHandler) renderForm(
+func (h *RegisterHandler) writeJSON(
 	w http.ResponseWriter,
 	status int,
-	data registerPageData,
+	response registrationResponse,
 ) {
-	if err := h.renderer.Render(
-		w,
-		status,
-		"register.html",
-		data,
-	); err != nil {
-		fmt.Println("render register form:", err)
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(response)
+}
 
-		http.Error(
-			w,
-			http.StatusText(http.StatusInternalServerError),
-			http.StatusInternalServerError,
-		)
-	}
+func parseAge(value string) int {
+	age, _ := strconv.Atoi(value)
+	return age
 }

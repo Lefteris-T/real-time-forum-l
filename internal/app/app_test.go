@@ -170,7 +170,7 @@ func TestGuestAccessBoundaries(t *testing.T) {
 		{name: "SPA shell", method: http.MethodGet, path: "/", status: http.StatusOK},
 		{name: "SPA stylesheet", method: http.MethodGet, path: "/static/app.css", status: http.StatusOK},
 		{name: "login page", method: http.MethodGet, path: "/login", status: http.StatusOK},
-		{name: "registration page", method: http.MethodGet, path: "/register", status: http.StatusOK},
+		{name: "registration route returns to SPA shell", method: http.MethodGet, path: "/register", status: http.StatusSeeOther},
 		{name: "login endpoint", method: http.MethodPost, path: "/login", status: http.StatusBadRequest},
 		{name: "registration endpoint", method: http.MethodPost, path: "/register", status: http.StatusBadRequest},
 		{name: "logout endpoint clears guest cookie", method: http.MethodPost, path: "/logout", status: http.StatusSeeOther},
@@ -199,6 +199,41 @@ func TestGuestAccessBoundaries(t *testing.T) {
 		})
 	}
 }
+
+func TestRegistrationSPAShellIncludesAllRequiredFields(t *testing.T) {
+	handler, cleanup, err := buildHandler(config.Config{
+		DatabasePath:    t.TempDir() + "/forum.db",
+		SessionDuration: time.Hour,
+		CookieName:      "forum_session",
+	})
+	if err != nil {
+		t.Fatalf("buildHandler() error: %v", err)
+	}
+	t.Cleanup(cleanup)
+
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("GET / status = %d, want %d", response.Code, http.StatusOK)
+	}
+	for _, field := range []string{
+		`name="username"`,
+		`name="age"`,
+		`name="gender"`,
+		`name="first_name"`,
+		`name="last_name"`,
+		`name="email"`,
+		`name="password"`,
+		`data-registration-result`,
+	} {
+		if !strings.Contains(response.Body.String(), field) {
+			t.Errorf("SPA shell does not include %s", field)
+		}
+	}
+}
+
 func TestBuildHandlerAddsSecurityHeadersToAllResponses(
 	t *testing.T,
 ) {

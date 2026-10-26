@@ -192,10 +192,7 @@ func buildHandler(
 		)
 	}
 
-	registerHandler := handler.NewRegisterHandler(
-		authService,
-		renderer,
-	)
+	registerHandler := handler.NewRegisterHandler(authService)
 
 	loginHandler := handler.NewLoginHandler(
 		loginService,
