@@ -25,7 +25,7 @@ func TestLoginGET(t *testing.T) {
 			<html>
 			<body>
 				<form method="post" action="/login">
-					<input name="email">
+					<input name="identifier">
 					<input name="password" type="password">
 					<button type="submit">Login</button>
 				</form>
@@ -164,7 +164,7 @@ func TestLoginPOSTSuccess(t *testing.T) {
 			<html>
 			<body>
 				<form method="post" action="/login">
-					<input name="email">
+					<input name="identifier">
 					<input name="password" type="password">
 				</form>
 			</body>
@@ -199,7 +199,7 @@ func TestLoginPOSTSuccess(t *testing.T) {
 	)
 
 	form := strings.NewReader(
-		"email=lefteris%40example.com&" +
+		"identifier=lefteris%40example.com&" +
 			"password=strong-password-123",
 	)
 
@@ -228,6 +228,13 @@ func TestLoginPOSTSuccess(t *testing.T) {
 
 	if !service.loginCalled {
 		t.Fatal("Login() was not called")
+	}
+	if service.input.Identifier != "lefteris@example.com" {
+		t.Fatalf(
+			"Login() identifier = %q, want %q",
+			service.input.Identifier,
+			"lefteris@example.com",
+		)
 	}
 
 	if !sessions.createCalled {
@@ -271,7 +278,7 @@ func TestLoginPOSTInvalidInputReturnsBadRequest(t *testing.T) {
 				{{end}}
 
 				<form method="post" action="/login">
-					<input name="email" value="{{.Email}}">
+					<input name="identifier" value="{{.Identifier}}">
 					<input name="password" type="password">
 				</form>
 			</body>
@@ -306,7 +313,7 @@ func TestLoginPOSTInvalidInputReturnsBadRequest(t *testing.T) {
 	)
 
 	form := strings.NewReader(
-		"email=not-an-email&" +
+		"identifier=not-an-email&" +
 			"password=strong-password-123",
 	)
 
@@ -359,7 +366,7 @@ func TestLoginPOSTWrongCredentialsReturnsUnauthorized(t *testing.T) {
 				{{end}}
 
 				<form method="post" action="/login">
-					<input name="email" value="{{.Email}}">
+					<input name="identifier" value="{{.Identifier}}">
 					<input name="password" type="password">
 				</form>
 			</body>
@@ -385,7 +392,7 @@ func TestLoginPOSTWrongCredentialsReturnsUnauthorized(t *testing.T) {
 	)
 
 	form := strings.NewReader(
-		"email=lefteris%40example.com&" +
+		"identifier=lefteris%40example.com&" +
 			"password=wrong-password",
 	)
 
@@ -414,7 +421,7 @@ func TestLoginPOSTWrongCredentialsReturnsUnauthorized(t *testing.T) {
 
 	body := rec.Body.String()
 
-	if !strings.Contains(body, "Wrong email or password") {
+	if !strings.Contains(body, "Invalid nickname/email or password") {
 		t.Fatalf(
 			"body does not contain safe credential message: %s",
 			body,

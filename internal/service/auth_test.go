@@ -191,13 +191,13 @@ type fakeUserFinder struct {
 	user model.User
 	err  error
 
-	called bool
-	email  string
+	called     bool
+	identifier string
 }
 
-func (f *fakeUserFinder) ByEmail(email string) (model.User, error) {
+func (f *fakeUserFinder) ByIdentifier(identifier string) (model.User, error) {
 	f.called = true
-	f.email = email
+	f.identifier = identifier
 
 	return f.user, f.err
 }
@@ -240,8 +240,8 @@ func TestLoginWithCorrectCredentials(t *testing.T) {
 	)
 
 	user, err := auth.Login(validation.LoginInput{
-		Email:    "  Lefteris@Example.COM  ",
-		Password: "strong-password-123",
+		Identifier: "  Lefteris@Example.COM  ",
+		Password:   "strong-password-123",
 	})
 	if err != nil {
 		t.Fatalf("Login() error: %v", err)
@@ -252,13 +252,13 @@ func TestLoginWithCorrectCredentials(t *testing.T) {
 	}
 
 	if !users.called {
-		t.Fatal("ByEmail() was not called")
+		t.Fatal("ByIdentifier() was not called")
 	}
 
-	if users.email != "lefteris@example.com" {
+	if users.identifier != "lefteris@example.com" {
 		t.Fatalf(
-			"ByEmail() email = %q, want normalized email",
-			users.email,
+			"ByIdentifier() identifier = %q, want normalized email",
+			users.identifier,
 		)
 	}
 
@@ -277,19 +277,58 @@ func TestLoginWithCorrectCredentials(t *testing.T) {
 		t.Fatal("Compare() received wrong password")
 	}
 }
+
+func TestLoginWithNickname(t *testing.T) {
+	users := &fakeUserFinder{
+		user: model.User{
+			ID:           42,
+			Username:     "lefteris",
+			Email:        "lefteris@example.com",
+			PasswordHash: "stored-hash",
+		},
+	}
+	passwords := &fakePasswordComparer{}
+	auth := NewLoginService(users, passwords, nil, 24*time.Hour)
+
+	user, err := auth.Login(validation.LoginInput{
+		Identifier: "  Lefteris  ",
+		Password:   "strong-password-123",
+	})
+	if err != nil {
+		t.Fatalf("Login() error: %v", err)
+	}
+	if user.ID != 42 {
+		t.Fatalf("user.ID = %d, want 42", user.ID)
+	}
+	if users.identifier != "lefteris" {
+		t.Fatalf("lookup identifier = %q, want %q", users.identifier, "lefteris")
+	}
+	if passwords.hash != "stored-hash" || passwords.password != "strong-password-123" {
+		t.Fatalf("Compare() got hash %q and password %q", passwords.hash, passwords.password)
+	}
+}
+
 func TestLoginInvalidCredentialsAreIndistinguishable(t *testing.T) {
 	tests := []struct {
 		name       string
+		identifier string
 		user       model.User
 		userErr    error
 		compareErr error
 	}{
 		{
-			name:    "unknown email",
-			userErr: repository.ErrUserNotFound,
+			name:       "unknown email",
+			identifier: "missing@example.com",
+			userErr:    repository.ErrUserNotFound,
 		},
 		{
-			name: "wrong password",
+			name:       "unknown nickname",
+			identifier: "missing-user",
+			userErr:    repository.ErrUserNotFound,
+		},
+		{
+			name:       "wrong password",
+			identifier: "lefteris@example.com",
 			user: model.User{
 				ID:           42,
 				Email:        "lefteris@example.com",
@@ -318,8 +357,8 @@ func TestLoginInvalidCredentialsAreIndistinguishable(t *testing.T) {
 			)
 
 			_, err := auth.Login(validation.LoginInput{
-				Email:    "lefteris@example.com",
-				Password: "wrong-password",
+				Identifier: tt.identifier,
+				Password:   "wrong-password",
 			})
 
 			if !errors.Is(err, ErrInvalidCredentials) {
@@ -348,8 +387,8 @@ func TestLoginInvalidInputStopsEarly(t *testing.T) {
 	)
 
 	_, err := auth.Login(validation.LoginInput{
-		Email:    "not-an-email",
-		Password: "strong-password-123",
+		Identifier: "not-an@email",
+		Password:   "strong-password-123",
 	})
 
 	if err == nil {
@@ -357,7 +396,7 @@ func TestLoginInvalidInputStopsEarly(t *testing.T) {
 	}
 
 	if users.called {
-		t.Fatal("ByEmail() was called for invalid input")
+		t.Fatal("ByIdentifier() was called for invalid input")
 	}
 
 	if passwords.called {

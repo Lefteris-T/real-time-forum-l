@@ -2,6 +2,7 @@ package validation
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -191,19 +192,53 @@ func TestValidateRegistrationRejectsInvalidFields(t *testing.T) {
 
 func TestValidateLoginNormalizesEmailAndPreservesPassword(t *testing.T) {
 	input := LoginInput{
-		Email:    "  Lefteris@Example.COM  ",
-		Password: "password with spaces",
+		Identifier: "  Lefteris@Example.COM  ",
+		Password:   "password with spaces",
 	}
 
 	got, err := ValidateLogin(input)
 	if err != nil {
 		t.Fatalf("ValidateLogin() error: %v", err)
 	}
-	if got.Email != "lefteris@example.com" {
-		t.Errorf("Email = %q, want %q", got.Email, "lefteris@example.com")
+	if got.Identifier != "lefteris@example.com" {
+		t.Errorf("Identifier = %q, want %q", got.Identifier, "lefteris@example.com")
 	}
 	if got.Password != input.Password {
 		t.Errorf("Password = %q, want it preserved exactly", got.Password)
+	}
+}
+
+func TestValidateLoginNormalizesNicknameAndPreservesPassword(t *testing.T) {
+	input := LoginInput{
+		Identifier: "  Lefteris  ",
+		Password:   "password with spaces",
+	}
+
+	got, err := ValidateLogin(input)
+	if err != nil {
+		t.Fatalf("ValidateLogin() error: %v", err)
+	}
+	if got.Identifier != "lefteris" {
+		t.Errorf("Identifier = %q, want %q", got.Identifier, "lefteris")
+	}
+	if got.Password != input.Password {
+		t.Errorf("Password = %q, want it preserved exactly", got.Password)
+	}
+}
+
+func TestValidateLoginAcceptsNicknameLengthBoundaries(t *testing.T) {
+	for _, nickname := range []string{
+		strings.Repeat("a", minUsernameLength),
+		strings.Repeat("a", maxUsernameLength),
+	} {
+		t.Run(fmt.Sprintf("length_%d", len(nickname)), func(t *testing.T) {
+			if _, err := ValidateLogin(LoginInput{
+				Identifier: nickname,
+				Password:   "strong-password-123",
+			}); err != nil {
+				t.Errorf("ValidateLogin(%q) error: %v", nickname, err)
+			}
+		})
 	}
 }
 
@@ -214,24 +249,38 @@ func TestValidateLoginRejectsInvalidFields(t *testing.T) {
 		mutate func(*LoginInput)
 	}{
 		{
-			name:  "blank email",
-			field: "email",
+			name:  "blank identifier",
+			field: "identifier",
 			mutate: func(input *LoginInput) {
-				input.Email = " "
+				input.Identifier = " "
 			},
 		},
 		{
 			name:  "malformed email",
-			field: "email",
+			field: "identifier",
 			mutate: func(input *LoginInput) {
-				input.Email = "not-an-email"
+				input.Identifier = "not-an@email"
 			},
 		},
 		{
 			name:  "oversized email",
-			field: "email",
+			field: "identifier",
 			mutate: func(input *LoginInput) {
-				input.Email = strings.Repeat("a", 300) + "@example.com"
+				input.Identifier = strings.Repeat("a", 300) + "@example.com"
+			},
+		},
+		{
+			name:  "nickname too short",
+			field: "identifier",
+			mutate: func(input *LoginInput) {
+				input.Identifier = "ab"
+			},
+		},
+		{
+			name:  "nickname too long",
+			field: "identifier",
+			mutate: func(input *LoginInput) {
+				input.Identifier = strings.Repeat("a", maxUsernameLength+1)
 			},
 		},
 		{
@@ -253,8 +302,8 @@ func TestValidateLoginRejectsInvalidFields(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			input := LoginInput{
-				Email:    "lefteris@example.com",
-				Password: "strong-password-123",
+				Identifier: "lefteris@example.com",
+				Password:   "strong-password-123",
 			}
 			tt.mutate(&input)
 

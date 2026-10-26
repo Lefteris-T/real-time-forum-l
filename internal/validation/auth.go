@@ -43,8 +43,8 @@ type RegistrationInput struct {
 
 // LoginInput is raw credential form data.
 type LoginInput struct {
-	Email    string
-	Password string
+	Identifier string
+	Password   string
 }
 
 // ValidateRegistration returns normalized email and username values while
@@ -129,25 +129,43 @@ func ValidateRegistration(input RegistrationInput) (RegistrationInput, error) {
 	}, nil
 }
 
-// ValidateLogin normalizes the email and applies safe input-size limits.
+// ValidateLogin normalizes the login identifier and applies safe size limits.
 func ValidateLogin(input LoginInput) (LoginInput, error) {
-	email := strings.ToLower(strings.TrimSpace(input.Email))
+	identifier := strings.ToLower(strings.TrimSpace(input.Identifier))
 
-	if email == "" {
-		return LoginInput{}, fieldError("email", "is required")
+	if identifier == "" {
+		return LoginInput{}, fieldError("identifier", "is required")
 	}
-	if len(email) > maxEmailLength {
-		return LoginInput{}, fieldError("email", "is too long")
-	}
+	if strings.Contains(identifier, "@") {
+		if len(identifier) > maxEmailLength {
+			return LoginInput{}, fieldError("identifier", "is too long")
+		}
 
-	parsedEmail, err := mail.ParseAddress(email)
-	if err != nil || parsedEmail.Address != email {
-		return LoginInput{}, fieldError("email", "is invalid")
-	}
+		parsedEmail, err := mail.ParseAddress(identifier)
+		if err != nil || parsedEmail.Address != identifier {
+			return LoginInput{}, fieldError("identifier", "is invalid")
+		}
 
-	at := strings.LastIndexByte(email, '@')
-	if at < 1 || !strings.Contains(email[at+1:], ".") {
-		return LoginInput{}, fieldError("email", "domain must contain a dot")
+		at := strings.LastIndexByte(identifier, '@')
+		if at < 1 || !strings.Contains(identifier[at+1:], ".") {
+			return LoginInput{}, fieldError(
+				"identifier",
+				"email domain must contain a dot",
+			)
+		}
+	} else {
+		if len(identifier) < minUsernameLength {
+			return LoginInput{}, fieldError(
+				"identifier",
+				fmt.Sprintf("nickname must be at least %d characters", minUsernameLength),
+			)
+		}
+		if len(identifier) > maxUsernameLength {
+			return LoginInput{}, fieldError(
+				"identifier",
+				fmt.Sprintf("nickname must be at most %d characters", maxUsernameLength),
+			)
+		}
 	}
 
 	if input.Password == "" {
@@ -161,7 +179,7 @@ func ValidateLogin(input LoginInput) (LoginInput, error) {
 	}
 
 	return LoginInput{
-		Email:    email,
-		Password: input.Password,
+		Identifier: identifier,
+		Password:   input.Password,
 	}, nil
 }

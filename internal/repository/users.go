@@ -69,10 +69,24 @@ func (r *UserRepository) Create(user model.User) (int64, error) {
 
 // ByEmail retrieves the account used during credential verification.
 func (r *UserRepository) ByEmail(email string) (model.User, error) {
+	return r.byIdentity(email, "email")
+}
+
+// ByIdentifier looks up a user by email when identifier contains an @ sign,
+// and by username otherwise. Callers should pass a normalized identifier.
+func (r *UserRepository) ByIdentifier(identifier string) (model.User, error) {
+	if strings.Contains(identifier, "@") {
+		return r.byIdentity(identifier, "email")
+	}
+
+	return r.byIdentity(identifier, "username")
+}
+
+func (r *UserRepository) byIdentity(value, column string) (model.User, error) {
 	var user model.User
 	var createdAt string
 
-	err := r.db.QueryRow(`
+	query := fmt.Sprintf(`
 		SELECT
 			id,
 			email,
@@ -84,10 +98,10 @@ func (r *UserRepository) ByEmail(email string) (model.User, error) {
 			password_hash,
 			created_at
 		FROM users
-		WHERE email = ?
-	`,
-		email,
-	).Scan(
+		WHERE %s = ?
+	`, column)
+
+	err := r.db.QueryRow(query, value).Scan(
 		&user.ID,
 		&user.Email,
 		&user.Username,
@@ -104,7 +118,7 @@ func (r *UserRepository) ByEmail(email string) (model.User, error) {
 			return model.User{}, ErrUserNotFound
 		}
 
-		return model.User{}, fmt.Errorf("find user by email: %w", err)
+		return model.User{}, fmt.Errorf("find user by %s: %w", column, err)
 	}
 
 	user.CreatedAt, err = time.Parse(time.RFC3339, createdAt)

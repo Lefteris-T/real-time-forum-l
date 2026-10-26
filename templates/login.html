@@ -43,16 +43,16 @@
         <form method="post" action="/login" novalidate>
 
             <div class="field">
-                <label for="email">
-                    Email
+                <label for="identifier">
+                    Nickname or email
                 </label>
 
                 <input
-                    id="email"
-                    name="email"
-                    type="email"
-                    value="{{.Email}}"
-                    autocomplete="email"
+                    id="identifier"
+                    name="identifier"
+                    type="text"
+                    value="{{.Identifier}}"
+                    autocomplete="username"
                     required
                 >
             </div>

@@ -79,7 +79,7 @@ func TestRequestLoggingDoesNotLogSecrets(t *testing.T) {
 		http.MethodPost,
 		"/login?token=super-secret",
 		strings.NewReader(
-			"email=a@example.com&password=my-secret-password",
+			"identifier=a@example.com&password=my-secret-password",
 		),
 	)
 

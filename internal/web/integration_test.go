@@ -349,39 +349,38 @@ func TestIntegrationRegistrationAndLogin(t *testing.T) {
 
 	res.Body.Close()
 
-	loginValues := url.Values{
-		"email": {
-			"alice@example.com",
-		},
-		"password": {
-			"strong-password-123",
-		},
-	}
+	for _, identifier := range []string{"alice@example.com", "alice"} {
+		t.Run(identifier, func(t *testing.T) {
+			loginValues := url.Values{
+				"identifier": {identifier},
+				"password":   {"strong-password-123"},
+			}
 
-	res, err = browser.PostForm(
-		server.URL+"/login",
-		loginValues,
-	)
-	if err != nil {
-		t.Fatalf("POST /login: %v", err)
-	}
+			res, err := browser.PostForm(
+				server.URL+"/login",
+				loginValues,
+			)
+			if err != nil {
+				t.Fatalf("POST /login: %v", err)
+			}
+			defer res.Body.Close()
 
-	if res.StatusCode != http.StatusSeeOther {
-		t.Fatalf(
-			"login status = %d, want %d",
-			res.StatusCode,
-			http.StatusSeeOther,
-		)
-	}
+			if res.StatusCode != http.StatusSeeOther {
+				t.Fatalf(
+					"login status = %d, want %d",
+					res.StatusCode,
+					http.StatusSeeOther,
+				)
+			}
 
-	if got := res.Header.Get("Location"); got != "/" {
-		t.Fatalf(
-			"login Location = %q, want /",
-			got,
-		)
+			if got := res.Header.Get("Location"); got != "/" {
+				t.Fatalf(
+					"login Location = %q, want /",
+					got,
+				)
+			}
+		})
 	}
-
-	res.Body.Close()
 }
 func registerAndLogin(
 	t *testing.T,
@@ -427,7 +426,7 @@ func registerAndLogin(
 	res, err = browser.PostForm(
 		server.URL+"/login",
 		url.Values{
-			"email": {
+			"identifier": {
 				email,
 			},
 			"password": {
@@ -1337,16 +1336,16 @@ func TestIntegrationAuthFormsDelegateValidationToServer(t *testing.T) {
 		wantMessage string
 	}{
 		{
-			name: "missing email",
+			name: "missing identifier",
 			form: url.Values{
 				"password": {"strong-password-123"},
 			},
-			wantMessage: "email is required",
+			wantMessage: "identifier is required",
 		},
 		{
 			name: "missing password",
 			form: url.Values{
-				"email": {"alice@example.com"},
+				"identifier": {"alice@example.com"},
 			},
 			wantMessage: "password is required",
 		},

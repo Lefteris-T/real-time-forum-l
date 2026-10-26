@@ -85,7 +85,7 @@ func TestSingleActiveBrowserSession(t *testing.T) {
 				{{end}}
 
 				<form method="post" action="/login">
-					<input name="email" value="{{.Email}}">
+					<input name="identifier" value="{{.Identifier}}">
 					<input name="password" type="password">
 					<button type="submit">Login</button>
 				</form>
@@ -237,7 +237,7 @@ func loginBrowser(
 
 	form := url.Values{}
 	form.Set(
-		"email",
+		"identifier",
 		"lefteris@example.com",
 	)
 	form.Set(

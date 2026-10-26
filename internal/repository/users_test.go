@@ -27,9 +27,9 @@ func TestUserRepositoryCreateAndFindByEmail(t *testing.T) {
 		t.Fatalf("Create() error: %v", err)
 	}
 
-	user, err := repo.ByEmail("lefteris@example.com")
+	user, err := repo.ByIdentifier("lefteris@example.com")
 	if err != nil {
-		t.Fatalf("ByEmail() error: %v", err)
+		t.Fatalf("ByIdentifier(email) error: %v", err)
 	}
 
 	if user.ID != id {
@@ -62,6 +62,14 @@ func TestUserRepositoryCreateAndFindByEmail(t *testing.T) {
 			user.PasswordHash,
 			"bcrypt-hash",
 		)
+	}
+
+	byNickname, err := repo.ByIdentifier("lefteris")
+	if err != nil {
+		t.Fatalf("ByIdentifier(nickname) error: %v", err)
+	}
+	if byNickname.ID != id {
+		t.Errorf("nickname lookup ID = %d, want %d", byNickname.ID, id)
 	}
 }
 
@@ -120,6 +128,16 @@ func TestUserRepositoryReturnsNotFound(t *testing.T) {
 	_, err = repo.ByID(9999)
 	if err != ErrUserNotFound {
 		t.Fatalf("ByID() error = %v, want ErrUserNotFound", err)
+	}
+
+	for _, identifier := range []string{"missing@example.com", "missing-user"} {
+		if _, err := repo.ByIdentifier(identifier); err != ErrUserNotFound {
+			t.Errorf(
+				"ByIdentifier(%q) error = %v, want ErrUserNotFound",
+				identifier,
+				err,
+			)
+		}
 	}
 }
 

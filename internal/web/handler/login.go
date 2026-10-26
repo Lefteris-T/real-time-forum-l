@@ -32,8 +32,8 @@ type LoginHandler struct {
 }
 
 type loginPageData struct {
-	Email string
-	Error string
+	Identifier string
+	Error      string
 }
 
 // NewLoginHandler constructs login HTTP behavior.
@@ -49,8 +49,8 @@ func NewLoginHandler(
 	}
 }
 
-// ServeHTTP gives unknown emails and wrong passwords the same unauthorized
-// response, preventing account enumeration.
+// ServeHTTP gives unknown identifiers and wrong passwords the same
+// unauthorized response, preventing account enumeration.
 func (h *LoginHandler) ServeHTTP(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -103,19 +103,19 @@ func (h *LoginHandler) handlePost(
 	}
 
 	input := validation.LoginInput{
-		Email:    r.FormValue("email"),
-		Password: r.FormValue("password"),
+		Identifier: r.FormValue("identifier"),
+		Password:   r.FormValue("password"),
 	}
 
 	user, err := h.service.Login(input)
 	if err != nil {
 		data := loginPageData{
-			Email: input.Email,
+			Identifier: input.Identifier,
 		}
 
 		switch {
 		case errors.Is(err, service.ErrInvalidCredentials):
-			data.Error = "Wrong email or password"
+			data.Error = "Invalid nickname/email or password"
 
 			h.renderForm(
 				w,

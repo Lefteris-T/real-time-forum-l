@@ -79,7 +79,7 @@ var ErrInvalidCredentials = errors.New("invalid credentials")
 const dummyPasswordHash = "$2a$10$7EqJtq98hPqEX7fNZaFWoO5xDBmIf6M1q3P0RHFN6GmlCaypVH7De"
 
 type UserFinder interface {
-	ByEmail(email string) (model.User, error)
+	ByIdentifier(identifier string) (model.User, error)
 }
 
 type PasswordComparer interface {
@@ -131,7 +131,7 @@ func (s *LoginService) Login(
 		)
 	}
 
-	user, err := s.users.ByEmail(validated.Email)
+	user, err := s.users.ByIdentifier(validated.Identifier)
 	if err != nil {
 		if errors.Is(err, repository.ErrUserNotFound) {
 			_ = s.passwords.Compare(
