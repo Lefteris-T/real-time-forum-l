@@ -9,6 +9,12 @@ const postCategories = document.querySelector("#post-categories");
 const postSubmitButton = postForm.querySelector('button[type="submit"]');
 const feedStatus = document.querySelector("#feed-status");
 const feedPosts = document.querySelector("#feed-posts");
+const detailStatus = document.querySelector("#detail-status");
+const detailPost = document.querySelector("#post-detail");
+const commentsStatus = document.querySelector("#comments-status");
+const postComments = document.querySelector("#post-comments");
+const commentForm = document.querySelector("#comment-form");
+const commentResult = document.querySelector("#comment-result");
 const logoutButton = document.querySelector("[data-logout]");
 const authStatus = document.querySelector("#auth-status");
 const guestNavigation = document.querySelectorAll("[data-guest-only]");
@@ -19,6 +25,7 @@ let authGeneration = 0;
 let categoriesLoaded = false;
 let categoriesLoading = false;
 let feedRequest = null;
+let selectedPostID = null;
 
 function showView(viewName) {
   for (const panel of panels) {
@@ -51,6 +58,12 @@ function setAuthenticated(value) {
     feedPosts.replaceChildren();
     feedStatus.textContent = "";
     feedStatus.hidden = true;
+    selectedPostID = null;
+    detailPost.replaceChildren();
+    postComments.replaceChildren();
+    commentForm.hidden = true;
+    setStatus(detailStatus, "");
+    setStatus(commentsStatus, "");
   }
 }
 
@@ -69,6 +82,11 @@ async function readJSON(response) {
 }
 
 document.addEventListener("click", (event) => {
+  const postButton = event.target.closest("[data-open-post]");
+  if (postButton) {
+    void loadPostDetail(postButton.dataset.openPost);
+    return;
+  }
   const button = event.target.closest("[data-view]");
 
   if (!button) {
@@ -169,7 +187,10 @@ function renderFeed(posts) {
     const article = document.createElement("article");
     article.className = "feed-post";
 
-    const title = document.createElement("h3");
+    const title = document.createElement("button");
+    title.type = "button";
+    title.className = "feed-post-title";
+    title.dataset.openPost = String(post.id);
     title.textContent = String(post.title);
     article.append(title);
 
@@ -201,6 +222,77 @@ function renderFeed(posts) {
     article.append(reactions);
 
     feedPosts.append(article);
+  }
+}
+
+function setStatus(element, message) {
+  element.textContent = message;
+  element.hidden = !message;
+}
+
+function renderPostDetail(post) {
+  detailPost.replaceChildren();
+  const metadata = document.createElement("p");
+  metadata.className = "feed-post-meta";
+  metadata.textContent = `${String(post.author?.username || "Unknown author")} · ${formatPostDate(post.created_at)}`;
+  const body = document.createElement("p");
+  body.className = "feed-post-body";
+  body.textContent = String(post.body);
+  detailPost.append(metadata, body);
+
+  const categories = document.createElement("div");
+  categories.className = "feed-post-categories";
+  for (const category of post.categories || []) {
+    const tag = document.createElement("span");
+    tag.className = "feed-category-tag";
+    tag.textContent = String(category.name);
+    categories.append(tag);
+  }
+  if (categories.childElementCount) detailPost.append(categories);
+
+  postComments.replaceChildren();
+  if (!post.comments?.length) {
+    setStatus(commentsStatus, "No comments yet.");
+  } else {
+    setStatus(commentsStatus, "");
+    for (const comment of post.comments) {
+      const article = document.createElement("article");
+      article.className = "post-comment";
+      const content = document.createElement("p");
+      content.textContent = String(comment.body);
+      const byline = document.createElement("p");
+      byline.className = "feed-post-meta";
+      byline.textContent = `${String(comment.author?.username || "Unknown author")} · ${formatPostDate(comment.created_at)}`;
+      article.append(content, byline);
+      postComments.append(article);
+    }
+  }
+}
+
+async function loadPostDetail(postID) {
+  if (!authenticated || !/^\d+$/.test(String(postID))) return;
+  selectedPostID = String(postID);
+  detailPost.replaceChildren();
+  postComments.replaceChildren();
+  commentForm.hidden = !authenticated;
+  commentForm.action = `/api/posts/${encodeURIComponent(selectedPostID)}/comments`;
+  commentResult.hidden = true;
+  setStatus(detailStatus, "Loading post and comments…");
+  setStatus(commentsStatus, "");
+  showView("post");
+  try {
+    const response = await fetch(`/api/posts/${encodeURIComponent(selectedPostID)}`, {
+      credentials: "same-origin", headers: { Accept: "application/json" },
+    });
+    const result = await readJSON(response);
+    if (!authenticated || selectedPostID !== String(postID)) return;
+    if (!response.ok) throw new Error(result.error || "Unable to load this post.");
+    document.querySelector("#detail-title").textContent = String(result.title || "Post detail");
+    renderPostDetail(result);
+    setStatus(detailStatus, "");
+  } catch (error) {
+    if (!authenticated || selectedPostID !== String(postID)) return;
+    setStatus(detailStatus, error.message || "Unable to load this post. Please try again.");
   }
 }
 
@@ -393,6 +485,35 @@ postForm.addEventListener("submit", async (event) => {
     postResult.hidden = false;
   } finally {
     postSubmitButton.disabled = !categoriesLoaded;
+  }
+});
+
+commentForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!authenticated || !selectedPostID) return;
+  const submit = commentForm.querySelector('button[type="submit"]');
+  submit.disabled = true;
+  commentResult.hidden = true;
+  try {
+    const response = await fetch(commentForm.action, {
+      method: "POST", credentials: "same-origin",
+      headers: { Accept: "application/json", "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
+      body: new URLSearchParams(new FormData(commentForm)),
+    });
+    const result = await readJSON(response);
+    if (!authenticated) return;
+    if (!response.ok) throw new Error(result.error || "Unable to add comment.");
+    commentForm.reset();
+    commentResult.textContent = result.message || "Comment added.";
+    commentResult.dataset.status = "success";
+    commentResult.hidden = false;
+    await loadPostDetail(selectedPostID);
+  } catch (error) {
+    commentResult.textContent = error.message || "Unable to add comment. Please try again.";
+    commentResult.dataset.status = "error";
+    commentResult.hidden = false;
+  } finally {
+    submit.disabled = false;
   }
 });
 

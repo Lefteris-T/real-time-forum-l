@@ -16,7 +16,6 @@
       <button type="button" data-view="register" data-guest-only>Register</button>
       <button type="button" data-view="feed" data-auth-required hidden>Feed</button>
       <button type="button" data-view="create-post" data-auth-required hidden>Create Post</button>
-      <button type="button" data-view="post" data-auth-required hidden>Post detail</button>
       <button type="button" data-view="chat" data-auth-required hidden>Chat</button>
       <button type="button" data-logout hidden>Logout</button>
     </nav>
@@ -184,8 +183,21 @@
       </section>
 
       <section data-view-panel="post" hidden>
-        <h2>Post detail</h2>
-        <p>The selected post and its comments will appear here.</p>
+        <h2 id="detail-title">Post detail</h2>
+        <p id="detail-status" role="status" aria-live="polite" hidden></p>
+        <article id="post-detail"></article>
+        <section aria-labelledby="comments-title">
+          <h3 id="comments-title">Comments</h3>
+          <p id="comments-status" role="status" aria-live="polite" hidden></p>
+          <div id="post-comments"></div>
+          <form id="comment-form" action="/api/posts/0/comments" method="post" hidden>
+            <label for="comment-body">Add a comment</label>
+            <textarea id="comment-body" name="body" rows="4" maxlength="2000" required></textarea>
+            <button type="submit">Add comment</button>
+            <p id="comment-result" role="status" aria-live="polite" hidden></p>
+          </form>
+        </section>
+        <button type="button" data-view="feed">Back to feed</button>
       </section>
 
       <section data-view-panel="chat" hidden>

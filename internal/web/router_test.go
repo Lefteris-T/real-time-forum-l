@@ -408,6 +408,32 @@ func TestPostRoutesDispatchesCommentCreation(t *testing.T) {
 		t.Fatal("comment handler was not called")
 	}
 }
+
+func TestPostAPIRoutesDispatchesDetailAndCommentCreation(t *testing.T) {
+	var detailCalled, commentCalled bool
+	detail := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		detailCalled = r.URL.Path == "/api/posts/42"
+		w.WriteHeader(http.StatusNoContent)
+	})
+	comment := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		commentCalled = r.URL.Path == "/api/posts/42/comments"
+		w.WriteHeader(http.StatusNoContent)
+	})
+	routes := postAPIRoutes(detail, comment)
+	for _, request := range []*http.Request{
+		httptest.NewRequest(http.MethodGet, "/api/posts/42", nil),
+		httptest.NewRequest(http.MethodPost, "/api/posts/42/comments", nil),
+	} {
+		recorder := httptest.NewRecorder()
+		routes.ServeHTTP(recorder, request)
+		if recorder.Code != http.StatusNoContent {
+			t.Fatalf("%s %s status = %d", request.Method, request.URL.Path, recorder.Code)
+		}
+	}
+	if !detailCalled || !commentCalled {
+		t.Fatalf("detail/comment dispatched = %t/%t", detailCalled, commentCalled)
+	}
+}
 func TestPostRoutesDispatchesPostReaction(t *testing.T) {
 	reactionCalled := false
 

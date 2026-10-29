@@ -243,6 +243,8 @@ func buildHandler(
 			SessionStatus:   handler.NewSessionStatusHandler(),
 			CategoryList:    handler.NewCategoryListHandler(categories),
 			PostAPI:         handler.NewPostAPIHandler(postService, posts),
+			PostDetailAPI:   handler.NewPostDetailAPIHandler(posts),
+			CommentAPI:      handler.NewCommentAPIHandler(commentService),
 			PostCreation:    postCreationHandler,
 			PostDetail:      postDetailHandler,
 			CommentCreate:   commentHandler,

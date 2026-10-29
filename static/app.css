@@ -184,6 +184,33 @@ section[hidden] {
   border-radius: 0.6rem;
 }
 
+.feed-post-title {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.feed-post-title:hover,
+.feed-post-title:focus-visible {
+  text-decoration: underline;
+}
+
+.post-comment {
+  border-top: 1px solid #d8dce3;
+  padding: 0.75rem 0;
+}
+
+#comment-form textarea {
+  display: block;
+  width: 100%;
+  margin: 0.5rem 0;
+}
+
 .feed-post h3 {
   margin: 0 0 0.35rem;
 }

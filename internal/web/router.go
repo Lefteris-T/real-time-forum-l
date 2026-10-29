@@ -24,6 +24,8 @@ type Handlers struct {
 	SessionStatus   http.Handler
 	CategoryList    http.Handler
 	PostAPI         http.Handler
+	PostDetailAPI   http.Handler
+	CommentAPI      http.Handler
 	PostCreation    http.Handler
 	PostDetail      http.Handler
 	CommentCreate   http.Handler
@@ -140,6 +142,11 @@ func NewForumRouter(h Handlers) http.Handler {
 			Handler: middleware.RequireAuth(h.PostAPI),
 		},
 		{
+			Methods: nil,
+			Pattern: "/api/posts/",
+			Handler: middleware.RequireAuth(postAPIRoutes(h.PostDetailAPI, h.CommentAPI)),
+		},
+		{
 			Methods: []string{http.MethodGet},
 			Pattern: "/posts/new",
 			Handler: middleware.RequireAuth(h.PostCreation),
@@ -180,6 +187,21 @@ func NewForumRouter(h Handlers) http.Handler {
 		},
 	}
 	return NewRouter(routes)
+}
+
+func postAPIRoutes(detail, comment http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/api/posts/")
+		parts := strings.Split(path, "/")
+		switch {
+		case len(parts) == 1 && parts[0] != "":
+			methodHandler([]string{http.MethodGet}, detail).ServeHTTP(w, r)
+		case len(parts) == 2 && parts[0] != "" && parts[1] == "comments":
+			methodHandler([]string{http.MethodPost}, comment).ServeHTTP(w, r)
+		default:
+			writeError(w, http.StatusNotFound)
+		}
+	})
 }
 
 func postRoutes(
