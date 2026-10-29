@@ -28,6 +28,8 @@ Try to send a message.
 Does the message respect the format, by using the users name and the date that the message was sent?
 Open two browsers (ex: Chrome and Firefox), log in with different users in each one and with one of them try to send a private message to the other.
 Did the other user receive a notification?
+If the recipient is viewing Feed or another conversation, does Contacts show a generic new-message notice and unread count? Does opening the conversation clear that unread state?
+Log out the recipient, send another message, and log back in. Does the notice and unread count appear after login, and does the saved message load in the conversation?
 Open two browsers (ex: Chrome and Firefox), log in with different users in each one and with one of them try to send a private message to the other.
 Did the other user receive the message in real time, without refreshing the page?
 Try to open a private conversation, that has more than 10 messages.

@@ -208,11 +208,13 @@ func buildHandler(
 	loginHandler := handler.NewLoginHandler(
 		loginService,
 		sessionManager,
+		webSocketHub,
 	)
 
 	logoutHandler := handler.NewLogoutHandler(
 		loginService,
 		sessionManager,
+		webSocketHub,
 	)
 
 	spaHandler := handler.NewSPAHandler(

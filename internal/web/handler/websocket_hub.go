@@ -40,6 +40,11 @@ type presenceChange struct {
 	Online   bool   `json:"online"`
 }
 
+// UserConnectionCloser invalidates all live sockets for a revoked session.
+type UserConnectionCloser interface {
+	DisconnectUser(userID int64)
+}
+
 // WebSocketHub tracks every live connection by authenticated user. Its mutex
 // protects registration and routing; each client's writer owns socket writes.
 type WebSocketHub struct {
@@ -170,6 +175,24 @@ func (h *WebSocketHub) Publish(userID int64, event WebSocketEvent) error {
 // PublishMessage adapts service message events to the WebSocket event envelope.
 func (h *WebSocketHub) PublishMessage(userID int64, eventType string, payload json.RawMessage) error {
 	return h.Publish(userID, WebSocketEvent{Type: eventType, Payload: payload})
+}
+
+// DisconnectUser closes every active tab for a user whose single server-side
+// session has been replaced or revoked.
+func (h *WebSocketHub) DisconnectUser(userID int64) {
+	if userID <= 0 {
+		return
+	}
+	h.mu.Lock()
+	clients := make([]*webSocketClient, 0, len(h.clients[userID]))
+	for client := range h.clients[userID] {
+		clients = append(clients, client)
+	}
+	h.mu.Unlock()
+
+	for _, client := range clients {
+		client.stopWithClose(websocket.ClosePolicyViolation, "Session ended")
+	}
 }
 
 // Shutdown rejects future registrations, closes all upgraded connections,
@@ -304,6 +327,18 @@ func (c *webSocketClient) writePump() {
 
 func (c *webSocketClient) stop() {
 	c.stopOnce.Do(func() {
+		close(c.done)
+		_ = c.conn.Close()
+	})
+}
+
+func (c *webSocketClient) stopWithClose(code int, reason string) {
+	c.stopOnce.Do(func() {
+		_ = c.conn.WriteControl(
+			websocket.CloseMessage,
+			websocket.FormatCloseMessage(code, reason),
+			time.Now().Add(websocketWriteWait),
+		)
 		close(c.done)
 		_ = c.conn.Close()
 	})

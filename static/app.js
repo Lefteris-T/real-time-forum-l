@@ -56,6 +56,7 @@ let historyGeneration = 0;
 let historyRequest = null;
 let historyScrollTimer = null;
 const unreadMessages = new Map();
+const seenMessageIDs = new Set();
 let latestMessageNotice = "";
 const maxRealtimeRetries = 5;
 
@@ -95,6 +96,7 @@ function setAuthenticated(value) {
     }
     contacts = [];
     unreadMessages.clear();
+    seenMessageIDs.clear();
     latestMessageNotice = "";
     clearOnlineUsers("Sign in to see your contacts.");
     contactsRequest = null;
@@ -301,6 +303,7 @@ async function markConversationRead(conversationID) {
 function renderConversationMessages() {
   chatHistory.replaceChildren();
   for (const message of historyMessages) {
+    rememberMessageID(message.id);
     const article = document.createElement("article");
     article.className = "chat-message";
     article.dataset.messageId = String(message.id);
@@ -317,6 +320,13 @@ function renderConversationMessages() {
     article.append(metadata, body);
     chatHistory.append(article);
   }
+}
+
+function rememberMessageID(id) {
+  const key = String(id);
+  if (seenMessageIDs.has(key)) return;
+  if (seenMessageIDs.size >= 2000) seenMessageIDs.delete(seenMessageIDs.values().next().value);
+  seenMessageIDs.add(key);
 }
 
 function loadConversationHistory(older) {
@@ -400,6 +410,8 @@ function applyIncomingMessage(message) {
   if (!message || !Number.isSafeInteger(message.id) || !Number.isSafeInteger(message.conversation_id) ||
       !Number.isSafeInteger(message.sender_id) || typeof message.body !== "string" ||
       typeof message.created_at !== "string") return;
+  if (seenMessageIDs.has(String(message.id))) return;
+  rememberMessageID(message.id);
   const conversationID = message.conversation_id;
   const isOpen = activeView === "chat" && selectedConversationID === conversationID;
   const wasNearBottom = chatHistory.scrollHeight - chatHistory.scrollTop - chatHistory.clientHeight < 80;
@@ -568,6 +580,8 @@ function connectRealtimeSocket() {
     }, 30000);
     setRealtimeStatus("Live connection connected.");
     contactStatus.textContent = "Connected. Updating presence…";
+    if (contactsRequest) contactsRefreshPending = true;
+    else void loadContacts();
   });
 
   socket.addEventListener("message", (event) => {
@@ -587,7 +601,7 @@ function connectRealtimeSocket() {
     if (realtimeSocket === socket) setRealtimeStatus("Live connection interrupted…");
   });
 
-  socket.addEventListener("close", () => {
+  socket.addEventListener("close", (event) => {
     if (realtimeSocket !== socket) return;
     realtimeSocket = null;
     if (realtimeStableTimer !== null) {
@@ -596,6 +610,12 @@ function connectRealtimeSocket() {
     }
     if (!authenticated) {
       setRealtimeStatus("Live connection closed.");
+      return;
+    }
+    if (event.code === 1008) {
+      setAuthenticated(false);
+      showView("login");
+      showAuthStatus("Your session ended. Please sign in again.", "error");
       return;
     }
     clearOnlineUsers("Presence is unavailable while disconnected.");

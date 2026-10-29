@@ -11,6 +11,7 @@ import (
 	"forum/internal/model"
 	"forum/internal/service"
 	"forum/internal/validation"
+	"forum/internal/web/middleware"
 )
 
 type fakeLoginService struct {
@@ -56,6 +57,12 @@ type fakeSessionManager struct {
 	clearCalled  bool
 }
 
+type fakeUserConnectionCloser struct{ userIDs []int64 }
+
+func (f *fakeUserConnectionCloser) DisconnectUser(userID int64) {
+	f.userIDs = append(f.userIDs, userID)
+}
+
 func (f *fakeSessionManager) Create(w http.ResponseWriter) (string, error) {
 	f.createCalled = true
 	http.SetCookie(w, &http.Cookie{Name: "forum_session", Value: f.id, Path: "/", HttpOnly: true})
@@ -86,7 +93,8 @@ func TestLoginGETRedirectsToSPAShell(t *testing.T) {
 func TestLoginPOSTSuccessReturnsJSONAndCreatesSession(t *testing.T) {
 	loginService := &fakeLoginService{user: model.User{ID: 42}}
 	sessions := &fakeSessionManager{id: "session-123"}
-	h := NewLoginHandler(loginService, sessions)
+	closer := &fakeUserConnectionCloser{}
+	h := NewLoginHandler(loginService, sessions, closer)
 	req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader("identifier=user%40example.com&password=secret-password"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()
@@ -109,6 +117,9 @@ func TestLoginPOSTSuccessReturnsJSONAndCreatesSession(t *testing.T) {
 	}
 	if !sessions.createCalled || !loginService.createSessionCalled || loginService.userID != 42 || loginService.sessionID != sessions.id {
 		t.Fatal("successful login did not create the expected server session")
+	}
+	if len(closer.userIDs) != 1 || closer.userIDs[0] != 42 {
+		t.Fatalf("session replacement disconnected users %v, want [42]", closer.userIDs)
 	}
 	if rec.Header().Get("Set-Cookie") == "" {
 		t.Fatal("login response did not set a session cookie")
@@ -199,6 +210,22 @@ func TestLogoutPOSTReturnsJSONAndClearsSession(t *testing.T) {
 	}
 	if rec.Header().Get("Location") != "" {
 		t.Fatal("logout response redirected instead of returning JSON")
+	}
+}
+
+func TestLogoutDisconnectsEverySocketForAuthenticatedUser(t *testing.T) {
+	closer := &fakeUserConnectionCloser{}
+	handler := NewLogoutHandler(
+		&fakeLoginService{},
+		&fakeSessionManager{readID: "session-123", readOK: true},
+		closer,
+	)
+	req := httptest.NewRequest(http.MethodPost, "/logout", nil)
+	req = req.WithContext(middleware.ContextWithUser(req.Context(), model.User{ID: 82}))
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusOK || len(closer.userIDs) != 1 || closer.userIDs[0] != 82 {
+		t.Fatalf("logout status/disconnected users = %d/%v", recorder.Code, closer.userIDs)
 	}
 }
 

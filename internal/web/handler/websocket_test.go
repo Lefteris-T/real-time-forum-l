@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -91,6 +92,34 @@ func TestWebSocketHubBroadcastsToMultipleConnectionsAndShutsDown(t *testing.T) {
 		t.Fatal("connection remained open after hub shutdown")
 	}
 	_ = second.Close()
+}
+
+func TestWebSocketHubDisconnectUserClosesAllConnectionsWithPolicyCode(t *testing.T) {
+	hub := NewWebSocketHub()
+	server := authenticatedWebSocketServer(hub, 73)
+	t.Cleanup(func() {
+		hub.Shutdown()
+		server.Close()
+	})
+
+	first := dialForumWebSocket(t, server)
+	second := dialForumWebSocket(t, server)
+	defer first.Close()
+	defer second.Close()
+	assertPresenceSnapshot(t, first, nil)
+	assertPresenceSnapshot(t, second, nil)
+	waitForWebSocketClientCount(t, hub, 73, 2)
+
+	hub.DisconnectUser(73)
+	for _, conn := range []*websocket.Conn{first, second} {
+		_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+		_, _, err := conn.ReadMessage()
+		var closeErr *websocket.CloseError
+		if !errors.As(err, &closeErr) || closeErr.Code != websocket.ClosePolicyViolation {
+			t.Fatalf("close error = %v, want WebSocket policy close", err)
+		}
+	}
+	waitForWebSocketClientCount(t, hub, 73, 0)
 }
 
 func TestWebSocketHandshakeWorksThroughRequestLogging(t *testing.T) {

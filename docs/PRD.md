@@ -26,6 +26,8 @@ collects:
 Login accepts either nickname or email together with the password. Passwords
 are stored as bcrypt hashes, not plaintext. A user can log out from any SPA
 view. Sessions use opaque identifiers and retain their state on the server.
+Each account has one active session; logout and session replacement close all
+of that user's WebSocket connections so other tabs return to login.
 
 Guests can access the registration and login experience. They cannot use
 authenticated forum actions or establish an authenticated WebSocket

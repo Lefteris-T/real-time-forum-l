@@ -26,8 +26,9 @@ type SessionManager interface {
 
 // LoginHandler serves login and creates matching cookie/database sessions.
 type LoginHandler struct {
-	service  LoginService
-	sessions SessionManager
+	service     LoginService
+	sessions    SessionManager
+	connections UserConnectionCloser
 }
 
 type authResponse struct {
@@ -39,11 +40,16 @@ type authResponse struct {
 func NewLoginHandler(
 	service LoginService,
 	sessions SessionManager,
+	connections ...UserConnectionCloser,
 ) *LoginHandler {
-	return &LoginHandler{
+	handler := &LoginHandler{
 		service:  service,
 		sessions: sessions,
 	}
+	if len(connections) > 0 {
+		handler.connections = connections[0]
+	}
+	return handler
 }
 
 // ServeHTTP gives unknown identifiers and wrong passwords the same
@@ -109,6 +115,9 @@ func (h *LoginHandler) handlePost(
 
 		writeAuthJSON(w, http.StatusInternalServerError, authResponse{Error: http.StatusText(http.StatusInternalServerError)})
 		return
+	}
+	if h.connections != nil {
+		h.connections.DisconnectUser(user.ID)
 	}
 
 	writeAuthJSON(w, http.StatusOK, authResponse{Message: "Login successful."})
