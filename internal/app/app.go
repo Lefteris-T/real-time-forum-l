@@ -146,8 +146,10 @@ func buildHandler(
 	users := repository.NewUserRepository(db)
 	sessions := repository.NewSessionRepository(db)
 	categories := repository.NewCategoryRepository(db)
+	conversations := repository.NewConversationRepository(db)
 	posts := repository.NewPostRepository(db)
 	comments := repository.NewCommentRepository(db)
+	messages := repository.NewMessageRepository(db)
 	reactions := repository.NewReactionRepository(db)
 
 	passwords := service.NewPasswordManager()
@@ -244,6 +246,8 @@ func buildHandler(
 			Logout:          logoutHandler,
 			SessionStatus:   handler.NewSessionStatusHandler(),
 			CategoryList:    handler.NewCategoryListHandler(categories),
+			ContactList:     handler.NewContactListHandler(conversations, webSocketHub),
+			MessageHistory:  handler.NewMessageHistoryHandler(messages),
 			PostAPI:         handler.NewPostAPIHandler(postService, posts),
 			PostDetailAPI:   handler.NewPostDetailAPIHandler(posts),
 			CommentAPI:      handler.NewCommentAPIHandler(commentService),

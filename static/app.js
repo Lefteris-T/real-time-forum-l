@@ -19,6 +19,12 @@ const logoutButton = document.querySelector("[data-logout]");
 const authStatus = document.querySelector("#auth-status");
 const realtimeStatus = document.querySelector("#realtime-status");
 const realtimeRetry = document.querySelector("#realtime-retry");
+const contactStatus = document.querySelector("#contact-status");
+const contactList = document.querySelector("#contact-list");
+const chatTitle = document.querySelector("#chat-title");
+const chatStatus = document.querySelector("#chat-status");
+const chatHistory = document.querySelector("#chat-history");
+const historyRetry = document.querySelector("#history-retry");
 const guestNavigation = document.querySelectorAll("[data-guest-only]");
 const authenticatedNavigation = document.querySelectorAll("[data-auth-required]");
 
@@ -32,6 +38,19 @@ let realtimeSocket = null;
 let realtimeRetryTimer = null;
 let realtimeStableTimer = null;
 let realtimeRetryCount = 0;
+const onlineUsers = new Map();
+let contacts = [];
+let contactsRequest = null;
+let contactsRefreshPending = false;
+let presenceSnapshotReceived = false;
+let selectedConversationID = 0;
+let selectedConversationName = "";
+let historyMessages = [];
+let historyHasOlder = false;
+let historyLoading = false;
+let historyGeneration = 0;
+let historyRequest = null;
+let historyScrollTimer = null;
 const maxRealtimeRetries = 5;
 
 function showView(viewName) {
@@ -57,6 +76,8 @@ function setAuthenticated(value) {
 
   if (authenticated) {
     void loadCategories();
+    clearOnlineUsers("Loading contacts…");
+    void loadContacts();
     connectRealtimeSocket();
   } else {
     if (realtimeSocket || realtimeRetryTimer !== null) {
@@ -65,6 +86,10 @@ function setAuthenticated(value) {
       setRealtimeStatus("");
       realtimeRetryCount = 0;
     }
+    contacts = [];
+    clearOnlineUsers("Sign in to see your contacts.");
+    contactsRequest = null;
+    contactsRefreshPending = false;
     categoriesLoaded = false;
     postForm.reset();
     postCategories.textContent = "Sign in to load categories.";
@@ -76,6 +101,17 @@ function setAuthenticated(value) {
     detailPost.replaceChildren();
     postComments.replaceChildren();
     commentForm.hidden = true;
+    selectedConversationID = 0;
+    selectedConversationName = "";
+    historyMessages = [];
+    historyHasOlder = false;
+    historyLoading = false;
+    historyGeneration += 1;
+    historyRequest = null;
+    chatHistory.replaceChildren();
+    historyRetry.hidden = true;
+    chatTitle.textContent = "Chat";
+    chatStatus.textContent = "Sign in to view conversations.";
     setStatus(detailStatus, "");
     setStatus(commentsStatus, "");
   }
@@ -86,6 +122,274 @@ function setRealtimeStatus(message, showRetry = false) {
   realtimeStatus.hidden = !message;
   realtimeRetry.hidden = !showRetry;
 }
+
+function clearOnlineUsers(message) {
+  onlineUsers.clear();
+  presenceSnapshotReceived = false;
+  for (const contact of contacts) contact.online = false;
+  renderContacts(message);
+}
+
+function renderContacts(statusMessage = "") {
+  contactList.replaceChildren();
+  let onlineCount = 0;
+  for (const contact of contacts) {
+    if (contact.online) onlineCount += 1;
+    const item = document.createElement("li");
+    item.className = "contact-row";
+    const dot = document.createElement("span");
+    dot.className = `presence-dot ${contact.online ? "online" : "offline"}`;
+    dot.setAttribute("aria-hidden", "true");
+    const name = document.createElement("button");
+    name.className = "contact-select";
+    name.type = "button";
+    name.dataset.openContact = "true";
+    name.dataset.contactId = String(contact.id);
+    name.dataset.contactUsername = contact.username;
+    name.dataset.conversationId = String(contact.conversation_id);
+    name.textContent = contact.username;
+    const status = document.createElement("span");
+    status.className = "contact-presence";
+    status.textContent = contact.online ? "Online" : "Offline";
+    item.append(dot, name, status);
+    contactList.append(item);
+  }
+  contactStatus.textContent = statusMessage || (contacts.length
+    ? `${contacts.length} ${contacts.length === 1 ? "contact" : "contacts"} · ${onlineCount} online.`
+    : "No other users are registered yet.");
+  contactStatus.hidden = false;
+}
+
+function loadContacts() {
+  if (!authenticated) return Promise.resolve();
+  if (contactsRequest) return contactsRequest;
+  const requestGeneration = authGeneration;
+  contactStatus.textContent = "Loading contacts…";
+  let request;
+  request = (async () => {
+    try {
+      const response = await fetch("/api/contacts", {
+        method: "GET",
+        credentials: "same-origin",
+        headers: { Accept: "application/json" },
+      });
+      const result = await readJSON(response);
+      if (!authenticated || requestGeneration !== authGeneration) return;
+      if (!response.ok || !Array.isArray(result.contacts)) {
+        throw new Error("Unable to load contacts.");
+      }
+      contacts = result.contacts.map((contact) => ({
+        id: Number(contact.id),
+        username: String(contact.username || "Unknown user"),
+        online: Boolean(contact.online),
+        conversation_id: Number(contact.conversation_id) || 0,
+        last_message_at: contact.last_message_at || null,
+      }));
+      if (presenceSnapshotReceived) {
+        for (const contact of contacts) {
+          contact.online = onlineUsers.has(String(contact.id));
+        }
+      } else {
+        onlineUsers.clear();
+        for (const contact of contacts) {
+          if (contact.online) onlineUsers.set(String(contact.id), { username: contact.username });
+        }
+      }
+      renderContacts();
+    } catch {
+      if (!authenticated || requestGeneration !== authGeneration) return;
+      contacts = [];
+      renderContacts("Unable to load contacts. Select Feed and try again.");
+    }
+  })().finally(() => {
+    if (contactsRequest !== request) return;
+    contactsRequest = null;
+    if (authenticated && requestGeneration !== authGeneration) {
+      void loadContacts();
+    } else if (authenticated && contactsRefreshPending) {
+      contactsRefreshPending = false;
+      void loadContacts();
+    }
+  });
+  contactsRequest = request;
+  return request;
+}
+
+function openConversation(contactButton) {
+  if (!authenticated) return;
+  selectedConversationID = Number(contactButton.dataset.conversationId) || 0;
+  selectedConversationName = String(contactButton.dataset.contactUsername || "Contact");
+  historyGeneration += 1;
+  historyRequest = null;
+  historyLoading = false;
+  historyHasOlder = false;
+  historyMessages = [];
+  historyRetry.hidden = true;
+  if (historyScrollTimer !== null) {
+    clearTimeout(historyScrollTimer);
+    historyScrollTimer = null;
+  }
+  chatTitle.textContent = selectedConversationName;
+  chatHistory.replaceChildren();
+  chatHistory.scrollTop = 0;
+  showView("chat");
+
+  if (selectedConversationID <= 0) {
+    chatStatus.textContent = "No messages in this conversation yet.";
+    return;
+  }
+  chatStatus.textContent = "Loading messages…";
+  void loadConversationHistory(false);
+}
+
+function renderConversationMessages() {
+  chatHistory.replaceChildren();
+  for (const message of historyMessages) {
+    const article = document.createElement("article");
+    article.className = "chat-message";
+    article.dataset.messageId = String(message.id);
+    const metadata = document.createElement("p");
+    metadata.className = "chat-message-meta";
+    const sender = document.createElement("span");
+    sender.textContent = String(message.sender || "Unknown user");
+    const sentAt = document.createElement("time");
+    sentAt.dateTime = String(message.created_at);
+    sentAt.textContent = formatPostDate(message.created_at);
+    const body = document.createElement("p");
+    body.textContent = String(message.body);
+    metadata.append(sender, sentAt);
+    article.append(metadata, body);
+    chatHistory.append(article);
+  }
+}
+
+function loadConversationHistory(older) {
+  if (!authenticated || selectedConversationID <= 0) return Promise.resolve();
+  if (historyRequest) return historyRequest;
+  if (older && (!historyHasOlder || historyLoading)) return Promise.resolve();
+  const requestGeneration = historyGeneration;
+  const conversationID = selectedConversationID;
+  const cursor = older ? historyMessages[0] : null;
+  if (older && !cursor) return Promise.resolve();
+  historyLoading = true;
+  historyRetry.hidden = true;
+  chatStatus.textContent = older ? "Loading earlier messages…" : "Loading messages…";
+
+  const url = new URL(`/api/conversations/${encodeURIComponent(conversationID)}/messages`, window.location.origin);
+  if (older) {
+    url.searchParams.set("before_id", String(cursor.id));
+    url.searchParams.set("before_created_at", String(cursor.created_at));
+  }
+
+  let request;
+  request = (async () => {
+    try {
+      const response = await fetch(url, {
+        method: "GET",
+        credentials: "same-origin",
+        headers: { Accept: "application/json" },
+      });
+      const result = await readJSON(response);
+      if (!authenticated || requestGeneration !== historyGeneration || conversationID !== selectedConversationID) return;
+      if (!response.ok || !Array.isArray(result.messages)) {
+        throw new Error(result.error || "Unable to load messages.");
+      }
+
+      if (older) {
+        if (result.messages.length === 0) {
+          historyHasOlder = false;
+          chatStatus.textContent = "You’re at the beginning of this conversation.";
+          return;
+        }
+        const previousHeight = chatHistory.scrollHeight;
+        const previousTop = chatHistory.scrollTop;
+        const existingIDs = new Set(historyMessages.map((message) => String(message.id)));
+        const olderMessages = result.messages.filter((message) => !existingIDs.has(String(message.id)));
+        historyMessages = [...olderMessages, ...historyMessages];
+        historyHasOlder = Boolean(result.has_older);
+        renderConversationMessages();
+        chatHistory.scrollTop = previousTop + (chatHistory.scrollHeight - previousHeight);
+        chatStatus.textContent = "";
+      } else {
+        historyMessages = result.messages;
+        historyHasOlder = Boolean(result.has_older);
+        renderConversationMessages();
+        chatHistory.scrollTop = chatHistory.scrollHeight;
+        chatStatus.textContent = historyMessages.length ? "" : "No messages in this conversation yet.";
+      }
+    } catch {
+      if (!authenticated || requestGeneration !== historyGeneration || conversationID !== selectedConversationID) return;
+      chatStatus.textContent = older
+        ? "Unable to load earlier messages. Try again."
+        : "Unable to load this conversation. Try again.";
+      historyRetry.dataset.older = String(older);
+      historyRetry.hidden = false;
+    }
+  })().finally(() => {
+    if (historyRequest === request) {
+      historyRequest = null;
+      historyLoading = false;
+    }
+  });
+  historyRequest = request;
+  return request;
+}
+
+chatHistory.addEventListener("scroll", () => {
+  if (historyScrollTimer !== null) return;
+  historyScrollTimer = setTimeout(() => {
+    historyScrollTimer = null;
+    if (chatHistory.scrollHeight > chatHistory.clientHeight && chatHistory.scrollTop <= 64 &&
+        historyHasOlder && !historyLoading) {
+      void loadConversationHistory(true);
+    }
+  }, 120);
+});
+
+historyRetry.addEventListener("click", () => {
+  void loadConversationHistory(historyRetry.dataset.older === "true");
+});
+
+function applyPresenceEvent(event) {
+  if (event.type === "presence.snapshot") {
+    const users = event.payload.online_users;
+    if (!Array.isArray(users)) return;
+    onlineUsers.clear();
+    presenceSnapshotReceived = true;
+    for (const user of users) {
+      if (Number.isSafeInteger(user?.user_id) && user.user_id > 0 && typeof user.username === "string") {
+        onlineUsers.set(String(user.user_id), { user_id: user.user_id, username: user.username });
+      }
+    }
+    for (const contact of contacts) {
+      contact.online = onlineUsers.has(String(contact.id));
+    }
+    renderContacts();
+    return;
+  }
+  if (event.type === "presence.changed") {
+    const user = event.payload;
+    if (!Number.isSafeInteger(user.user_id) || user.user_id <= 0 ||
+        typeof user.username !== "string" || typeof user.online !== "boolean") return;
+    if (user.online) {
+      onlineUsers.set(String(user.user_id), { user_id: user.user_id, username: user.username });
+    } else {
+      onlineUsers.delete(String(user.user_id));
+    }
+    const contact = contacts.find((item) => String(item.id) === String(user.user_id));
+    if (!contact && user.online) {
+      if (contactsRequest) contactsRefreshPending = true;
+      else void loadContacts();
+      return;
+    }
+    if (contact) contact.online = user.online;
+    renderContacts();
+  }
+}
+
+document.addEventListener("forum:realtime-event", (event) => {
+  if (authenticated) applyPresenceEvent(event.detail);
+});
 
 function closeRealtimeSocket() {
   if (realtimeRetryTimer !== null) {
@@ -124,6 +428,7 @@ function connectRealtimeSocket() {
       realtimeStableTimer = null;
     }, 30000);
     setRealtimeStatus("Live connection connected.");
+    contactStatus.textContent = "Connected. Updating presence…";
   });
 
   socket.addEventListener("message", (event) => {
@@ -154,6 +459,8 @@ function connectRealtimeSocket() {
       setRealtimeStatus("Live connection closed.");
       return;
     }
+    clearOnlineUsers("Presence is unavailable while disconnected.");
+    void loadContacts();
     if (realtimeRetryCount >= maxRealtimeRetries) {
       setRealtimeStatus("Live connection is unavailable. You can retry.", true);
       return;
@@ -189,6 +496,11 @@ async function readJSON(response) {
 }
 
 document.addEventListener("click", (event) => {
+  const contactButton = event.target.closest("[data-open-contact]");
+  if (contactButton) {
+    void openConversation(contactButton);
+    return;
+  }
   const postButton = event.target.closest("[data-open-post]");
   if (postButton) {
     void loadPostDetail(postButton.dataset.openPost);

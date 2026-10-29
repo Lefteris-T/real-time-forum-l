@@ -53,7 +53,7 @@ func (h *WebSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// The upgrader writes an HTTP error response when the handshake fails.
 		return
 	}
-	client := newWebSocketClient(user.ID, conn, h.hub)
+	client := newWebSocketClient(user.ID, user.Username, conn, h.hub)
 	if !h.hub.register(client) {
 		client.stop()
 		return

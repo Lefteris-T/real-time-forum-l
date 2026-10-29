@@ -23,6 +23,8 @@ type Handlers struct {
 	Logout          http.Handler
 	SessionStatus   http.Handler
 	CategoryList    http.Handler
+	ContactList     http.Handler
+	MessageHistory  http.Handler
 	PostAPI         http.Handler
 	PostDetailAPI   http.Handler
 	CommentAPI      http.Handler
@@ -141,6 +143,16 @@ func NewForumRouter(h Handlers) http.Handler {
 			Methods: []string{http.MethodGet},
 			Pattern: "/api/categories",
 			Handler: middleware.RequireAuth(h.CategoryList),
+		},
+		{
+			Methods: []string{http.MethodGet},
+			Pattern: "/api/contacts",
+			Handler: middleware.RequireAuth(h.ContactList),
+		},
+		{
+			Methods: nil,
+			Pattern: "/api/conversations/",
+			Handler: middleware.RequireAuth(h.MessageHistory),
 		},
 		{
 			Methods: []string{http.MethodGet, http.MethodPost},

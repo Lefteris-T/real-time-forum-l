@@ -174,6 +174,8 @@ func TestGuestAccessBoundaries(t *testing.T) {
 		{name: "login endpoint", method: http.MethodPost, path: "/login", status: http.StatusBadRequest},
 		{name: "registration endpoint", method: http.MethodPost, path: "/register", status: http.StatusBadRequest},
 		{name: "category list requires authentication", method: http.MethodGet, path: "/api/categories", status: http.StatusUnauthorized},
+		{name: "contact list requires authentication", method: http.MethodGet, path: "/api/contacts", status: http.StatusUnauthorized},
+		{name: "private message history requires authentication", method: http.MethodGet, path: "/api/conversations/1/messages", status: http.StatusUnauthorized},
 		{name: "API post creation requires authentication", method: http.MethodPost, path: "/api/posts", status: http.StatusUnauthorized},
 		{name: "API feed requires authentication", method: http.MethodGet, path: "/api/posts", status: http.StatusUnauthorized},
 		{name: "logout endpoint clears guest cookie", method: http.MethodPost, path: "/logout", status: http.StatusOK},

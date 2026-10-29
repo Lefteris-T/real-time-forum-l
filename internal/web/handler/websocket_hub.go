@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"sort"
 	"sync"
 	"time"
 
@@ -22,6 +23,21 @@ const (
 type WebSocketEvent struct {
 	Type    string          `json:"type"`
 	Payload json.RawMessage `json:"payload"`
+}
+
+type presenceUser struct {
+	UserID   int64  `json:"user_id"`
+	Username string `json:"username"`
+}
+
+type presenceSnapshot struct {
+	OnlineUsers []presenceUser `json:"online_users"`
+}
+
+type presenceChange struct {
+	UserID   int64  `json:"user_id"`
+	Username string `json:"username"`
+	Online   bool   `json:"online"`
 }
 
 // WebSocketHub tracks every live connection by authenticated user. Its mutex
@@ -43,11 +59,29 @@ func (h *WebSocketHub) register(client *webSocketClient) bool {
 	if h.stopped {
 		return false
 	}
+	firstConnection := len(h.clients[client.userID]) == 0
 	if h.clients[client.userID] == nil {
 		h.clients[client.userID] = make(map[*webSocketClient]struct{})
 	}
 	h.clients[client.userID][client] = struct{}{}
 	h.clientsWG.Add(1)
+
+	onlineUsers := make([]presenceUser, 0, len(h.clients))
+	for userID, userClients := range h.clients {
+		if userID == client.userID || len(userClients) == 0 {
+			continue
+		}
+		for connectedClient := range userClients {
+			onlineUsers = append(onlineUsers, presenceUser{UserID: userID, Username: connectedClient.username})
+			break
+		}
+	}
+	sort.Slice(onlineUsers, func(i, j int) bool { return onlineUsers[i].UserID < onlineUsers[j].UserID })
+	h.enqueueLocked(client, makeWebSocketEvent("presence.snapshot", presenceSnapshot{OnlineUsers: onlineUsers}))
+	if firstConnection {
+		change := presenceChange{UserID: client.userID, Username: client.username, Online: true}
+		h.broadcastPresenceLocked(client.userID, makeWebSocketEvent("presence.changed", change))
+	}
 	return true
 }
 
@@ -55,10 +89,43 @@ func (h *WebSocketHub) unregister(client *webSocketClient) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	userClients := h.clients[client.userID]
+	if _, registered := userClients[client]; !registered {
+		return
+	}
 	delete(userClients, client)
 	if len(userClients) == 0 {
 		delete(h.clients, client.userID)
+		if !h.stopped {
+			change := presenceChange{UserID: client.userID, Username: client.username, Online: false}
+			h.broadcastPresenceLocked(client.userID, makeWebSocketEvent("presence.changed", change))
+		}
 	}
+}
+
+func (h *WebSocketHub) broadcastPresenceLocked(excludedUserID int64, frame []byte) {
+	for userID, userClients := range h.clients {
+		if userID == excludedUserID {
+			continue
+		}
+		for client := range userClients {
+			h.enqueueLocked(client, frame)
+		}
+	}
+}
+
+func (h *WebSocketHub) enqueueLocked(client *webSocketClient, frame []byte) {
+	select {
+	case <-client.done:
+	case client.send <- frame:
+	default:
+		client.stop()
+	}
+}
+
+func makeWebSocketEvent(eventType string, payload any) []byte {
+	encodedPayload, _ := json.Marshal(payload)
+	encodedEvent, _ := json.Marshal(WebSocketEvent{Type: eventType, Payload: encodedPayload})
+	return encodedEvent
 }
 
 // Publish sends one JSON event to every active connection belonging to userID.
@@ -128,8 +195,23 @@ func (h *WebSocketHub) clientFinished() {
 	h.clientsWG.Done()
 }
 
+// OnlineUserIDs returns a snapshot of users with at least one active
+// connection. The returned map is independent of hub state.
+func (h *WebSocketHub) OnlineUserIDs() map[int64]struct{} {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	online := make(map[int64]struct{}, len(h.clients))
+	for userID, clients := range h.clients {
+		if len(clients) > 0 {
+			online[userID] = struct{}{}
+		}
+	}
+	return online
+}
+
 type webSocketClient struct {
 	userID   int64
+	username string
 	conn     *websocket.Conn
 	hub      *WebSocketHub
 	send     chan []byte
@@ -137,13 +219,14 @@ type webSocketClient struct {
 	stopOnce sync.Once
 }
 
-func newWebSocketClient(userID int64, conn *websocket.Conn, hub *WebSocketHub) *webSocketClient {
+func newWebSocketClient(userID int64, username string, conn *websocket.Conn, hub *WebSocketHub) *webSocketClient {
 	return &webSocketClient{
-		userID: userID,
-		conn:   conn,
-		hub:    hub,
-		send:   make(chan []byte, websocketSendQueueSize),
-		done:   make(chan struct{}),
+		userID:   userID,
+		username: username,
+		conn:     conn,
+		hub:      hub,
+		send:     make(chan []byte, websocketSendQueueSize),
+		done:     make(chan struct{}),
 	}
 }
 

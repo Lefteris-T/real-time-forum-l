@@ -64,6 +64,10 @@ func (r *MessageRepository) Create(conversationID, senderID int64, body string) 
 	`, createdAtValue, conversationID); err != nil {
 		return model.Message{}, err
 	}
+	var senderUsername string
+	if err := tx.QueryRow("SELECT username FROM users WHERE id = ?", senderID).Scan(&senderUsername); err != nil {
+		return model.Message{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return model.Message{}, err
 	}
@@ -72,6 +76,7 @@ func (r *MessageRepository) Create(conversationID, senderID int64, body string) 
 		ID:             messageID,
 		ConversationID: conversationID,
 		SenderID:       senderID,
+		SenderUsername: senderUsername,
 		Body:           body,
 		CreatedAt:      createdAt,
 	}, nil
@@ -87,15 +92,16 @@ func (r *MessageRepository) LatestForUser(conversationID, userID int64) ([]model
 		return nil, err
 	}
 	return r.list(`
-		SELECT id, conversation_id, sender_id, body, created_at
+		SELECT m.id, m.conversation_id, m.sender_id, u.username, m.body, m.created_at
 		FROM (
 			SELECT id, conversation_id, sender_id, body, created_at
 			FROM messages
 			WHERE conversation_id = ?
 			ORDER BY created_at DESC, id DESC
 			LIMIT ?
-		)
-		ORDER BY created_at ASC, id ASC
+		) m
+		JOIN users u ON u.id = m.sender_id
+		ORDER BY m.created_at ASC, m.id ASC
 	`, conversationID, MessagePageSize)
 }
 
@@ -113,7 +119,7 @@ func (r *MessageRepository) OlderForUser(conversationID, userID int64, before Me
 	}
 	createdAt := before.CreatedAt.UTC().Format(time.RFC3339)
 	return r.list(`
-		SELECT id, conversation_id, sender_id, body, created_at
+		SELECT m.id, m.conversation_id, m.sender_id, u.username, m.body, m.created_at
 		FROM (
 			SELECT id, conversation_id, sender_id, body, created_at
 			FROM messages
@@ -121,8 +127,9 @@ func (r *MessageRepository) OlderForUser(conversationID, userID int64, before Me
 			  AND (created_at < ? OR (created_at = ? AND id < ?))
 			ORDER BY created_at DESC, id DESC
 			LIMIT ?
-		)
-		ORDER BY created_at ASC, id ASC
+		) m
+		JOIN users u ON u.id = m.sender_id
+		ORDER BY m.created_at ASC, m.id ASC
 	`, conversationID, createdAt, createdAt, before.ID, MessagePageSize)
 }
 
@@ -165,6 +172,7 @@ func (r *MessageRepository) list(query string, args ...any) ([]model.Message, er
 			&message.ID,
 			&message.ConversationID,
 			&message.SenderID,
+			&message.SenderUsername,
 			&message.Body,
 			&createdAt,
 		); err != nil {

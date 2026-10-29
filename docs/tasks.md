@@ -519,7 +519,10 @@ feat: add private message repository
 - track active connections safely and define when a user becomes online/offline
 - support multiple connections for one account without marking them offline
   until the last connection closes
-- send presence changes over WebSockets and update the JavaScript view
+- send an initial online-user snapshot to each new connection
+- broadcast online/offline changes only on a user's first connection and final
+  disconnect
+- update the always-visible online-user display from those WebSocket events
 
 ```text
 feat: track online forum users

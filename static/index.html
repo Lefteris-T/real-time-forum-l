@@ -203,14 +203,17 @@
       </section>
 
       <section data-view-panel="chat" hidden>
-        <h2>Chat</h2>
-        <p>The selected conversation will appear here.</p>
+        <h2 id="chat-title">Chat</h2>
+        <p id="chat-status" role="status" aria-live="polite">Choose a contact to view messages.</p>
+        <button id="history-retry" type="button" hidden>Retry loading messages</button>
+        <div id="chat-history" class="chat-history" role="log" aria-live="polite" tabindex="0"></div>
       </section>
     </main>
 
     <aside aria-label="Chat contacts">
       <h2>Contacts</h2>
-      <p>Online and offline users will appear here.</p>
+      <p id="contact-status" role="status" aria-live="polite">Sign in to see your contacts.</p>
+      <ul id="contact-list" class="contact-list" aria-live="polite"></ul>
     </aside>
   </div>
 </body>

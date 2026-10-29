@@ -3,6 +3,8 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -73,7 +75,7 @@ func TestWebSocketHubBroadcastsToMultipleConnectionsAndShutsDown(t *testing.T) {
 	if err := hub.Publish(42, WebSocketEvent{Type: "still.connected"}); err != nil {
 		t.Fatalf("Publish() after one client disconnected: %v", err)
 	}
-	assertWebSocketEvents(t, second, 1)
+	assertWebSocketEventType(t, second, "still.connected", 1)
 
 	shutdownDone := make(chan struct{})
 	go func() {
@@ -91,6 +93,71 @@ func TestWebSocketHubBroadcastsToMultipleConnectionsAndShutsDown(t *testing.T) {
 	_ = second.Close()
 }
 
+func TestWebSocketHandshakeWorksThroughRequestLogging(t *testing.T) {
+	hub := NewWebSocketHub()
+	wsHandler := NewWebSocketHandler(hub)
+	authenticatedHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r = r.WithContext(middleware.ContextWithUser(r.Context(), model.User{ID: 99, Username: "logged"}))
+		wsHandler.ServeHTTP(w, r)
+	})
+	server := httptest.NewServer(middleware.RequestLogging(
+		log.New(io.Discard, "", 0),
+		authenticatedHandler,
+	))
+	t.Cleanup(func() {
+		hub.Shutdown()
+		server.Close()
+	})
+
+	conn := dialForumWebSocket(t, server)
+	assertPresenceSnapshot(t, conn, nil)
+	_ = conn.Close()
+	waitForWebSocketClientCount(t, hub, 99, 0)
+}
+
+func TestWebSocketHubBroadcastsPresenceOnFirstAndLastConnections(t *testing.T) {
+	hub := NewWebSocketHub()
+	aliceServer := authenticatedWebSocketServerAs(hub, 101, "alice")
+	bobServer := authenticatedWebSocketServerAs(hub, 202, "bob")
+	charlieServer := authenticatedWebSocketServerAs(hub, 303, "charlie")
+	t.Cleanup(func() {
+		hub.Shutdown()
+		aliceServer.Close()
+		bobServer.Close()
+		charlieServer.Close()
+	})
+
+	aliceFirst := dialForumWebSocket(t, aliceServer)
+	defer aliceFirst.Close()
+	assertPresenceSnapshot(t, aliceFirst, nil)
+	aliceSecond := dialForumWebSocket(t, aliceServer)
+	defer aliceSecond.Close()
+	assertPresenceSnapshot(t, aliceSecond, nil)
+	waitForWebSocketClientCount(t, hub, 101, 2)
+
+	bob := dialForumWebSocket(t, bobServer)
+	defer bob.Close()
+	assertPresenceSnapshot(t, bob, []presenceUser{{UserID: 101, Username: "alice"}})
+	assertPresenceChange(t, aliceFirst, 202, "bob", true)
+	assertPresenceChange(t, aliceSecond, 202, "bob", true)
+
+	_ = aliceFirst.Close()
+	waitForWebSocketClientCount(t, hub, 101, 1)
+	charlie := dialForumWebSocket(t, charlieServer)
+	assertPresenceSnapshot(t, charlie, []presenceUser{
+		{UserID: 101, Username: "alice"},
+		{UserID: 202, Username: "bob"},
+	})
+	assertPresenceChange(t, bob, 303, "charlie", true)
+	_ = charlie.Close()
+	waitForWebSocketClientCount(t, hub, 303, 0)
+	assertPresenceChange(t, bob, 303, "charlie", false)
+
+	_ = aliceSecond.Close()
+	waitForWebSocketClientCount(t, hub, 101, 0)
+	assertPresenceChange(t, bob, 101, "alice", false)
+}
+
 func TestWebSocketHandlerClosesUnsupportedApplicationFrames(t *testing.T) {
 	hub := NewWebSocketHub()
 	server := authenticatedWebSocketServer(hub, 7)
@@ -100,6 +167,7 @@ func TestWebSocketHandlerClosesUnsupportedApplicationFrames(t *testing.T) {
 	})
 	conn := dialForumWebSocket(t, server)
 	defer conn.Close()
+	assertPresenceSnapshot(t, conn, nil)
 	if err := conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"client.command"}`)); err != nil {
 		t.Fatalf("write application frame: %v", err)
 	}
@@ -160,9 +228,13 @@ func TestWebSocketClientAnswersPingAndRejectsOversizedFrames(t *testing.T) {
 }
 
 func authenticatedWebSocketServer(hub *WebSocketHub, userID int64) *httptest.Server {
+	return authenticatedWebSocketServerAs(hub, userID, fmt.Sprintf("user-%d", userID))
+}
+
+func authenticatedWebSocketServerAs(hub *WebSocketHub, userID int64, username string) *httptest.Server {
 	handler := NewWebSocketHandler(hub)
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		r = r.WithContext(middleware.ContextWithUser(r.Context(), model.User{ID: userID}))
+		r = r.WithContext(middleware.ContextWithUser(r.Context(), model.User{ID: userID, Username: username}))
 		handler.ServeHTTP(w, r)
 	}))
 }
@@ -199,31 +271,92 @@ func assertWebSocketEvents(t *testing.T, conn *websocket.Conn, count int) {
 	t.Helper()
 	seen := make(map[int]bool, count)
 	_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
-	for i := 0; i < count; i++ {
-		messageType, frame, err := conn.ReadMessage()
-		if err != nil {
-			t.Fatalf("read event %d/%d: %v", i+1, count, err)
+	for len(seen) < count {
+		event := readTestWebSocketEvent(t, conn)
+		if event.Type != "test.event" {
+			continue
 		}
-		if messageType != websocket.TextMessage {
-			t.Fatalf("event frame type = %d, want text", messageType)
+		var payload struct {
+			Sequence int `json:"sequence"`
 		}
-		var event struct {
-			Type    string `json:"type"`
-			Payload struct {
-				Sequence int `json:"sequence"`
-			} `json:"payload"`
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			t.Fatalf("decode event payload: %v", err)
 		}
-		if err := json.Unmarshal(frame, &event); err != nil {
-			t.Fatalf("decode event: %v", err)
+		if seen[payload.Sequence] {
+			t.Fatalf("duplicate event sequence %d", payload.Sequence)
 		}
-		if event.Type == "test.event" {
-			if seen[event.Payload.Sequence] {
-				t.Fatalf("duplicate event sequence %d", event.Payload.Sequence)
-			}
-			seen[event.Payload.Sequence] = true
+		seen[payload.Sequence] = true
+	}
+	if len(seen) != count {
+		t.Fatalf("received %d unique events, want %d", len(seen), count)
+	}
+}
+
+type receivedWebSocketEvent struct {
+	Type    string          `json:"type"`
+	Payload json.RawMessage `json:"payload"`
+}
+
+func assertWebSocketEventType(t *testing.T, conn *websocket.Conn, eventType string, count int) {
+	t.Helper()
+	_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	seen := 0
+	for seen < count {
+		if event := readTestWebSocketEvent(t, conn); event.Type == eventType {
+			seen++
 		}
 	}
-	if count > 1 && len(seen) != count {
-		t.Fatalf("received %d unique events, want %d", len(seen), count)
+}
+
+func readTestWebSocketEvent(t *testing.T, conn *websocket.Conn) receivedWebSocketEvent {
+	t.Helper()
+	messageType, frame, err := conn.ReadMessage()
+	if err != nil {
+		t.Fatalf("read websocket event: %v", err)
+	}
+	if messageType != websocket.TextMessage {
+		t.Fatalf("event frame type = %d, want text", messageType)
+	}
+	var event receivedWebSocketEvent
+	if err := json.Unmarshal(frame, &event); err != nil {
+		t.Fatalf("decode websocket event: %v", err)
+	}
+	return event
+}
+
+func assertPresenceSnapshot(t *testing.T, conn *websocket.Conn, want []presenceUser) {
+	t.Helper()
+	_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	event := readTestWebSocketEvent(t, conn)
+	if event.Type != "presence.snapshot" {
+		t.Fatalf("snapshot event type = %q, want presence.snapshot", event.Type)
+	}
+	var payload presenceSnapshot
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		t.Fatalf("decode presence snapshot: %v", err)
+	}
+	if len(payload.OnlineUsers) != len(want) {
+		t.Fatalf("snapshot users = %+v, want %+v", payload.OnlineUsers, want)
+	}
+	for i := range want {
+		if payload.OnlineUsers[i] != want[i] {
+			t.Fatalf("snapshot user[%d] = %+v, want %+v", i, payload.OnlineUsers[i], want[i])
+		}
+	}
+}
+
+func assertPresenceChange(t *testing.T, conn *websocket.Conn, userID int64, username string, online bool) {
+	t.Helper()
+	_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	event := readTestWebSocketEvent(t, conn)
+	if event.Type != "presence.changed" {
+		t.Fatalf("presence event type = %q, want presence.changed", event.Type)
+	}
+	var change presenceChange
+	if err := json.Unmarshal(event.Payload, &change); err != nil {
+		t.Fatalf("decode presence change: %v", err)
+	}
+	if change.UserID != userID || change.Username != username || change.Online != online {
+		t.Fatalf("presence change = %+v; want user %d (%q) online=%t", change, userID, username, online)
 	}
 }

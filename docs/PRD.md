@@ -129,8 +129,11 @@ one account keep it online until its final connection closes.
   text/binary frames are closed as unsupported. Control frames are handled for
   keepalive and clean disconnect.
 - Future server events use a JSON envelope with a string `type` and a
-  `payload` object. Phase 6 defines the envelope shape but does not publish
-  presence or chat events.
+  `payload` object. On connection, the server sends `presence.snapshot` with
+  `online_users` entries containing `user_id` and `username`. It broadcasts
+  `presence.changed` with `user_id`, `username`, and `online` only when a
+  user's first connection opens or their final connection closes. Snapshot
+  and change events exclude the current user; chat events use the same envelope.
 - On application shutdown, stop accepting hub registrations, close active
   sockets, wait for their read/write loops to exit, then close SQLite and
   other shared resources. `http.Server.Shutdown` alone does not close

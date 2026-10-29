@@ -1,7 +1,9 @@
 package middleware
 
 import (
+	"bufio"
 	"log"
+	"net"
 	"net/http"
 )
 
@@ -26,6 +28,26 @@ func (w *statusWriter) Write(body []byte) (int, error) {
 	}
 
 	return w.ResponseWriter.Write(body)
+}
+
+// Hijack forwards the optional capability required by WebSocket upgrades and
+// records their successful HTTP status for request logs.
+func (w *statusWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hijacker, ok := w.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, http.ErrNotSupported
+	}
+	conn, readWriter, err := hijacker.Hijack()
+	if err == nil {
+		w.status = http.StatusSwitchingProtocols
+	}
+	return conn, readWriter, err
+}
+
+// Unwrap lets http.ResponseController reach optional capabilities supported by
+// the underlying server writer.
+func (w *statusWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
 }
 
 // RequestLogging records method, path, status, and elapsed request time.
