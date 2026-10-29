@@ -71,9 +71,8 @@ The chat contact section stays visible while navigating forum views.
 - update presence and contact state without a page refresh
 - account for multiple active browser connections for one user when
   determining online/offline status
+- exclude the current user's own account from the contact list
 
-The final placement of the current user's own account in the contact list is
-an implementation detail to settle before contact-list implementation.
 
 ## Private Messages
 

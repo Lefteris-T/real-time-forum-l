@@ -530,7 +530,7 @@ feat: track online forum users
 - expose the online/offline contact list in the always-visible chat section
 - sort users with conversations by their latest message time
 - sort users with no messages alphabetically
-- document whether the current user's own account appears in the list
+- exclude the current user's own account, as decided in the PRD
 
 ### Acceptance
 
