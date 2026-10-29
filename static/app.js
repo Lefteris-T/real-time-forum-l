@@ -17,6 +17,8 @@ const commentForm = document.querySelector("#comment-form");
 const commentResult = document.querySelector("#comment-result");
 const logoutButton = document.querySelector("[data-logout]");
 const authStatus = document.querySelector("#auth-status");
+const realtimeStatus = document.querySelector("#realtime-status");
+const realtimeRetry = document.querySelector("#realtime-retry");
 const guestNavigation = document.querySelectorAll("[data-guest-only]");
 const authenticatedNavigation = document.querySelectorAll("[data-auth-required]");
 
@@ -26,6 +28,11 @@ let categoriesLoaded = false;
 let categoriesLoading = false;
 let feedRequest = null;
 let selectedPostID = null;
+let realtimeSocket = null;
+let realtimeRetryTimer = null;
+let realtimeStableTimer = null;
+let realtimeRetryCount = 0;
+const maxRealtimeRetries = 5;
 
 function showView(viewName) {
   for (const panel of panels) {
@@ -50,7 +57,14 @@ function setAuthenticated(value) {
 
   if (authenticated) {
     void loadCategories();
+    connectRealtimeSocket();
   } else {
+    if (realtimeSocket || realtimeRetryTimer !== null) {
+      closeRealtimeSocket();
+    } else {
+      setRealtimeStatus("");
+      realtimeRetryCount = 0;
+    }
     categoriesLoaded = false;
     postForm.reset();
     postCategories.textContent = "Sign in to load categories.";
@@ -66,6 +80,99 @@ function setAuthenticated(value) {
     setStatus(commentsStatus, "");
   }
 }
+
+function setRealtimeStatus(message, showRetry = false) {
+  realtimeStatus.textContent = message;
+  realtimeStatus.hidden = !message;
+  realtimeRetry.hidden = !showRetry;
+}
+
+function closeRealtimeSocket() {
+  if (realtimeRetryTimer !== null) {
+    clearTimeout(realtimeRetryTimer);
+    realtimeRetryTimer = null;
+  }
+  if (realtimeStableTimer !== null) {
+    clearTimeout(realtimeStableTimer);
+    realtimeStableTimer = null;
+  }
+  const socket = realtimeSocket;
+  realtimeSocket = null;
+  realtimeRetryCount = 0;
+  if (socket && socket.readyState < WebSocket.CLOSING) {
+    socket.close(1000, "User logged out");
+  }
+  setRealtimeStatus("Live connection closed.");
+}
+
+function connectRealtimeSocket() {
+  if (!authenticated || realtimeSocket || realtimeRetryTimer !== null) return;
+  if (realtimeRetryCount >= maxRealtimeRetries) {
+    setRealtimeStatus("Live connection is unavailable. You can retry.", true);
+    return;
+  }
+
+  const scheme = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const socket = new WebSocket(`${scheme}//${window.location.host}/ws`);
+  realtimeSocket = socket;
+  setRealtimeStatus("Connecting to live services…");
+
+  socket.addEventListener("open", () => {
+    if (realtimeSocket !== socket) return;
+    realtimeStableTimer = setTimeout(() => {
+      if (realtimeSocket === socket) realtimeRetryCount = 0;
+      realtimeStableTimer = null;
+    }, 30000);
+    setRealtimeStatus("Live connection connected.");
+  });
+
+  socket.addEventListener("message", (event) => {
+    if (realtimeSocket !== socket || typeof event.data !== "string") return;
+    try {
+      const envelope = JSON.parse(event.data);
+      if (!envelope || typeof envelope.type !== "string" ||
+          !envelope.payload || typeof envelope.payload !== "object" ||
+          Array.isArray(envelope.payload)) return;
+      document.dispatchEvent(new CustomEvent("forum:realtime-event", { detail: envelope }));
+    } catch {
+      // Ignore malformed server frames; the connection remains available.
+    }
+  });
+
+  socket.addEventListener("error", () => {
+    if (realtimeSocket === socket) setRealtimeStatus("Live connection interrupted…");
+  });
+
+  socket.addEventListener("close", () => {
+    if (realtimeSocket !== socket) return;
+    realtimeSocket = null;
+    if (realtimeStableTimer !== null) {
+      clearTimeout(realtimeStableTimer);
+      realtimeStableTimer = null;
+    }
+    if (!authenticated) {
+      setRealtimeStatus("Live connection closed.");
+      return;
+    }
+    if (realtimeRetryCount >= maxRealtimeRetries) {
+      setRealtimeStatus("Live connection is unavailable. You can retry.", true);
+      return;
+    }
+    realtimeRetryCount += 1;
+    const delay = Math.min(1000 * (2 ** (realtimeRetryCount - 1)), 8000);
+    setRealtimeStatus(`Live connection lost. Retrying in ${Math.ceil(delay / 1000)}s…`);
+    realtimeRetryTimer = setTimeout(() => {
+      realtimeRetryTimer = null;
+      connectRealtimeSocket();
+    }, delay);
+  });
+}
+
+realtimeRetry.addEventListener("click", () => {
+  realtimeRetryCount = 0;
+  setRealtimeStatus("Reconnecting to live services…");
+  connectRealtimeSocket();
+});
 
 function showAuthStatus(message, status) {
   authStatus.textContent = message;

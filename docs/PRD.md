@@ -108,6 +108,35 @@ ordering is straightforward. Index the pair, conversation activity, and
 cursor. Online presence lives in WebSocket hub memory; multiple connections for
 one account keep it online until its final connection closes.
 
+## WebSocket Connection Rules
+
+- The browser connects to `/ws` with `ws` on HTTP and `wss` on HTTPS. The
+  existing session cookie authenticates the upgrade; guests receive `401` and
+  the connection is not upgraded.
+- Accept only a browser `Origin` whose scheme and host exactly match the
+  request's scheme and host. Reject a missing, malformed, or cross-origin
+  `Origin` before upgrading. The scheme is derived from the direct TLS
+  connection; this application does not trust forwarding headers.
+- Associate each upgraded connection with the authenticated user's numeric
+  ID. Allow multiple tabs/connections for one user. A failed connection must
+  not stop the hub or affect other clients.
+- Use one read loop and one write loop per connection. The write loop is the
+  only writer of data and ping frames for that connection. Read/write
+  deadlines, ping/pong keepalive, and a bounded incoming frame size prevent
+  stalled or oversized clients from holding resources indefinitely.
+- The socket is server-to-browser event delivery. Browser commands, including
+  sending private messages, use authenticated HTTP endpoints. Until later
+  phases define events, clients send no application data frames; unexpected
+  text/binary frames are closed as unsupported. Control frames are handled for
+  keepalive and clean disconnect.
+- Future server events use a JSON envelope with a string `type` and a
+  `payload` object. Phase 6 defines the envelope shape but does not publish
+  presence or chat events.
+- On application shutdown, stop accepting hub registrations, close active
+  sockets, wait for their read/write loops to exit, then close SQLite and
+  other shared resources. `http.Server.Shutdown` alone does not close
+  hijacked WebSocket connections.
+
 ## Backend And Allowed Packages
 
 Go handles HTTP, data access, and WebSockets. SQLite stores account, forum,

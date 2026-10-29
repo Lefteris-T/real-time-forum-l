@@ -588,6 +588,7 @@ func TestForumRouterMethods(t *testing.T) {
 		SessionStatus:   okHandler,
 		CategoryList:    okHandler,
 		PostAPI:         okHandler,
+		WebSocket:       okHandler,
 		PostCreation:    okHandler,
 		PostDetail:      okHandler,
 		CommentCreate:   okHandler,
@@ -651,6 +652,19 @@ func TestForumRouterMethods(t *testing.T) {
 			path:   "/logout",
 			want:   http.StatusMethodNotAllowed,
 			allow:  http.MethodPost,
+		},
+		{
+			name:   "websocket get",
+			method: http.MethodGet,
+			path:   "/ws",
+			want:   http.StatusNoContent,
+		},
+		{
+			name:   "websocket non-get rejected",
+			method: http.MethodPost,
+			path:   "/ws",
+			want:   http.StatusMethodNotAllowed,
+			allow:  http.MethodGet,
 		},
 		{
 			name:   "category list get",

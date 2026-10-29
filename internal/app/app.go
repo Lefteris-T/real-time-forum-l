@@ -123,8 +123,10 @@ func buildHandler(
 			err,
 		)
 	}
+	webSocketHub := handler.NewWebSocketHub()
 
 	cleanup := func() {
+		webSocketHub.Shutdown()
 		rateLimiter.Stop()
 		db.Close()
 	}
@@ -245,6 +247,7 @@ func buildHandler(
 			PostAPI:         handler.NewPostAPIHandler(postService, posts),
 			PostDetailAPI:   handler.NewPostDetailAPIHandler(posts),
 			CommentAPI:      handler.NewCommentAPIHandler(commentService),
+			WebSocket:       handler.NewWebSocketHandler(webSocketHub),
 			PostCreation:    postCreationHandler,
 			PostDetail:      postDetailHandler,
 			CommentCreate:   commentHandler,

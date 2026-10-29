@@ -449,17 +449,29 @@ feat: add comments to posts
 ### Tasks
 
 - add an authenticated WebSocket endpoint using the allowed Gorilla package
-- validate the origin and associate the connection with the logged-in user
+- require the existing session cookie and return `401` to guests before
+  upgrading
+- accept only an exact same-origin `Origin` matching the direct request's
+  scheme and host; reject missing, malformed, and cross-origin values
+- associate each connection with the logged-in user's ID and allow multiple
+  connections per user
 - design a hub/client lifecycle for registration, disconnect, and shutdown
-- ensure one failed or disconnected client does not block other users
-- add a small message envelope/type scheme for future presence and chat events
-- handle malformed frames and unexpected disconnects safely
+- use one read loop and one write loop per connection, with a single data/ping
+  writer, bounded frame size, deadlines, and ping/pong keepalive
+- treat the socket as server-to-browser events; HTTP remains the command path,
+  and clients send no application frames during this phase
+- define a JSON `{type, payload}` event envelope for later presence and chat
+  phases without publishing those events yet
+- close only the failed client on malformed/unsupported frames or disconnect;
+  during shutdown close all sockets and wait for loops before closing SQLite
 
 ### Acceptance
 
 - only authenticated users can connect
+- missing and cross-origin Origin headers are rejected before upgrade
 - multiple clients can connect and disconnect cleanly
 - concurrent writes are serialized safely per connection
+- shutdown closes upgraded connections before shared resources are closed
 - WebSocket lifecycle behavior has focused tests
 
 ### Suggested Commits

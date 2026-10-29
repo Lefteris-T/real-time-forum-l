@@ -26,6 +26,7 @@ type Handlers struct {
 	PostAPI         http.Handler
 	PostDetailAPI   http.Handler
 	CommentAPI      http.Handler
+	WebSocket       http.Handler
 	PostCreation    http.Handler
 	PostDetail      http.Handler
 	CommentCreate   http.Handler
@@ -125,6 +126,11 @@ func NewForumRouter(h Handlers) http.Handler {
 			Methods: []string{http.MethodPost},
 			Pattern: "/logout",
 			Handler: h.Logout,
+		},
+		{
+			Methods: []string{http.MethodGet},
+			Pattern: "/ws",
+			Handler: middleware.RequireAuth(h.WebSocket),
 		},
 		{
 			Methods: []string{http.MethodGet},
