@@ -32,7 +32,7 @@ func (f onlineSnapshotFake) OnlineUserIDs() map[int64]struct{} { return f }
 func TestContactListHandlerCombinesContactOrderAndPresence(t *testing.T) {
 	lastMessageAt := time.Date(2026, 10, 28, 12, 30, 0, 0, time.FixedZone("local", 2*60*60))
 	reader := &contactListFake{contacts: []repository.ConversationContact{
-		{UserID: 8, Username: "recent", ConversationID: 12, LastMessageAt: &lastMessageAt},
+		{UserID: 8, Username: "recent", ConversationID: 12, UnreadCount: 3, LastMessageAt: &lastMessageAt},
 		{UserID: 9, Username: "offline", ConversationID: 0},
 	}}
 	handler := NewContactListHandler(reader, onlineSnapshotFake{8: {}})
@@ -53,7 +53,7 @@ func TestContactListHandlerCombinesContactOrderAndPresence(t *testing.T) {
 	if reader.userID != 4 || len(response.Contacts) != 2 {
 		t.Fatalf("reader user/count = %d/%d", reader.userID, len(response.Contacts))
 	}
-	if response.Contacts[0].ID != 8 || !response.Contacts[0].Online || response.Contacts[0].ConversationID != 12 ||
+	if response.Contacts[0].ID != 8 || !response.Contacts[0].Online || response.Contacts[0].ConversationID != 12 || response.Contacts[0].UnreadCount != 3 ||
 		response.Contacts[0].LastMessageAt == nil || *response.Contacts[0].LastMessageAt != "2026-10-28T10:30:00Z" {
 		t.Fatalf("recent contact = %+v", response.Contacts[0])
 	}

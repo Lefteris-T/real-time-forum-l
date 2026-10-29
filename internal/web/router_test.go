@@ -589,6 +589,8 @@ func TestForumRouterMethods(t *testing.T) {
 		CategoryList:    okHandler,
 		ContactList:     okHandler,
 		MessageHistory:  okHandler,
+		MessageRead:     okHandler,
+		MessageSend:     okHandler,
 		PostAPI:         okHandler,
 		WebSocket:       okHandler,
 		PostCreation:    okHandler,
@@ -698,6 +700,18 @@ func TestForumRouterMethods(t *testing.T) {
 			name:   "private message history",
 			method: http.MethodGet,
 			path:   "/api/conversations/14/messages",
+			want:   http.StatusNoContent,
+		},
+		{
+			name:   "send private message",
+			method: http.MethodPost,
+			path:   "/api/messages",
+			want:   http.StatusNoContent,
+		},
+		{
+			name:   "mark conversation messages read",
+			method: http.MethodPost,
+			path:   "/api/conversations/14/read",
 			want:   http.StatusNoContent,
 		},
 		{

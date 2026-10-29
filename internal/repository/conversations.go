@@ -20,6 +20,7 @@ type ConversationContact struct {
 	UserID         int64
 	Username       string
 	ConversationID int64
+	UnreadCount    int
 	LastMessageAt  *time.Time
 }
 
@@ -117,7 +118,15 @@ func (r *ConversationRepository) ListContacts(userID int64) ([]ConversationConta
 			u.id,
 			u.username,
 			COALESCE(c.id, 0),
-			c.last_message_at
+			c.last_message_at,
+			(SELECT COUNT(*)
+			 FROM messages m
+			 WHERE m.conversation_id = c.id
+			   AND m.sender_id != ?
+			   AND NOT EXISTS (
+				   SELECT 1 FROM message_reads mr
+				   WHERE mr.message_id = m.id AND mr.user_id = ?
+			   ))
 		FROM users u
 		LEFT JOIN conversations c
 			ON (c.user_low_id = ? AND c.user_high_id = u.id)
@@ -128,7 +137,7 @@ func (r *ConversationRepository) ListContacts(userID int64) ([]ConversationConta
 			c.last_message_at DESC,
 			LOWER(u.username) ASC,
 			u.id ASC
-	`, userID, userID, userID)
+	`, userID, userID, userID, userID, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -138,7 +147,7 @@ func (r *ConversationRepository) ListContacts(userID int64) ([]ConversationConta
 	for rows.Next() {
 		var contact ConversationContact
 		var lastMessageAt sql.NullString
-		if err := rows.Scan(&contact.UserID, &contact.Username, &contact.ConversationID, &lastMessageAt); err != nil {
+		if err := rows.Scan(&contact.UserID, &contact.Username, &contact.ConversationID, &lastMessageAt, &contact.UnreadCount); err != nil {
 			return nil, err
 		}
 		if lastMessageAt.Valid {

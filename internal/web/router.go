@@ -25,6 +25,8 @@ type Handlers struct {
 	CategoryList    http.Handler
 	ContactList     http.Handler
 	MessageHistory  http.Handler
+	MessageRead     http.Handler
+	MessageSend     http.Handler
 	PostAPI         http.Handler
 	PostDetailAPI   http.Handler
 	CommentAPI      http.Handler
@@ -150,9 +152,14 @@ func NewForumRouter(h Handlers) http.Handler {
 			Handler: middleware.RequireAuth(h.ContactList),
 		},
 		{
+			Methods: []string{http.MethodPost},
+			Pattern: "/api/messages",
+			Handler: middleware.RequireAuth(h.MessageSend),
+		},
+		{
 			Methods: nil,
 			Pattern: "/api/conversations/",
-			Handler: middleware.RequireAuth(h.MessageHistory),
+			Handler: middleware.RequireAuth(conversationAPIRoutes(h.MessageHistory, h.MessageRead)),
 		},
 		{
 			Methods: []string{http.MethodGet, http.MethodPost},
@@ -205,6 +212,20 @@ func NewForumRouter(h Handlers) http.Handler {
 		},
 	}
 	return NewRouter(routes)
+}
+
+func conversationAPIRoutes(history, markRead http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/api/conversations/")
+		switch {
+		case strings.HasSuffix(path, "/messages"):
+			methodHandler([]string{http.MethodGet}, history).ServeHTTP(w, r)
+		case strings.HasSuffix(path, "/read"):
+			methodHandler([]string{http.MethodPost}, markRead).ServeHTTP(w, r)
+		default:
+			writeError(w, http.StatusNotFound)
+		}
+	})
 }
 
 func postAPIRoutes(detail, comment http.Handler) http.Handler {

@@ -23,7 +23,7 @@ func TestMessageRepositoryCreateChecksParticipantsAndUpdatesActivity(t *testing.
 	if err != nil {
 		t.Fatalf("Create(): %v", err)
 	}
-	if message.ID <= 0 || message.ConversationID != conversation.ID || message.SenderID != secondID || message.Body != "persisted message" || message.CreatedAt.IsZero() {
+	if message.ID <= 0 || message.ConversationID != conversation.ID || message.SenderID != secondID || message.SenderUsername != "message-second" || message.Body != "persisted message" || message.CreatedAt.IsZero() {
 		t.Fatalf("created message = %+v", message)
 	}
 	updated, err := conversations.FindOrCreate(secondID, firstID)
@@ -76,6 +76,11 @@ func TestMessageRepositoryPaginatesStableTimestampAndIDCursor(t *testing.T) {
 	}
 	if len(latest) != MessagePageSize {
 		t.Fatalf("latest count = %d, want %d", len(latest), MessagePageSize)
+	}
+	for _, message := range latest {
+		if message.SenderUsername != "history-first" {
+			t.Fatalf("message sender username = %q, want history-first", message.SenderUsername)
+		}
 	}
 	assertMessageBodies(t, latest, 13, 22)
 

@@ -91,11 +91,17 @@ Only conversation participants may read or send within that conversation.
 Messages are persisted before live delivery is attempted, so a disconnect
 does not erase a sent message.
 
-The client sends a message through an authenticated HTTP endpoint. The service
-validates the sender, recipient, and conversation, persists the message, and
-then publishes a live event through the WebSocket hub. The recipient's
-JavaScript receives that event over its WebSocket connection. HTTP is the
-command path; WebSockets carry live delivery and presence events.
+The client sends `POST /api/messages` with `recipient_id` and `body` through an
+authenticated HTTP endpoint. The service validates the recipient and body,
+finds or creates the canonical conversation, persists the message, and then
+best-effort publishes `message.new` to the sender's and recipient's active
+WebSocket connections. The event payload contains a `message` object with its
+ID, conversation ID, sender ID and name, body, and timestamp. An open
+conversation renders it immediately; a closed conversation shows a generic
+new-message notice and unread count. Unread state is stored as per-user message
+read receipts, so the notice and count remain after logout or disconnect and
+are cleared when the user opens that conversation. HTTP is the command path;
+WebSockets carry live delivery and presence events.
 
 Each conversation represents one unordered user pair. Store the IDs as
 `user_low_id` and `user_high_id`, require `user_low_id < user_high_id`, and
@@ -124,16 +130,16 @@ one account keep it online until its final connection closes.
   deadlines, ping/pong keepalive, and a bounded incoming frame size prevent
   stalled or oversized clients from holding resources indefinitely.
 - The socket is server-to-browser event delivery. Browser commands, including
-  sending private messages, use authenticated HTTP endpoints. Until later
-  phases define events, clients send no application data frames; unexpected
-  text/binary frames are closed as unsupported. Control frames are handled for
-  keepalive and clean disconnect.
-- Future server events use a JSON envelope with a string `type` and a
+  sending private messages, use authenticated HTTP endpoints. Clients send no
+  application data frames; unexpected text/binary frames are closed as
+  unsupported. Control frames are handled for keepalive and clean disconnect.
+- Server events use a JSON envelope with a string `type` and a
   `payload` object. On connection, the server sends `presence.snapshot` with
   `online_users` entries containing `user_id` and `username`. It broadcasts
   `presence.changed` with `user_id`, `username`, and `online` only when a
   user's first connection opens or their final connection closes. Snapshot
-  and change events exclude the current user; chat events use the same envelope.
+  and change events exclude the current user. `message.new` contains the
+  persisted message for each active connection of the sender and recipient.
 - On application shutdown, stop accepting hub registrations, close active
   sockets, wait for their read/write loops to exit, then close SQLite and
   other shared resources. `http.Server.Shutdown` alone does not close

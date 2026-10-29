@@ -207,6 +207,12 @@
         <p id="chat-status" role="status" aria-live="polite">Choose a contact to view messages.</p>
         <button id="history-retry" type="button" hidden>Retry loading messages</button>
         <div id="chat-history" class="chat-history" role="log" aria-live="polite" tabindex="0"></div>
+        <form id="message-form" class="message-form" hidden>
+          <label for="message-body">Message</label>
+          <textarea id="message-body" name="body" rows="3" maxlength="2000" required></textarea>
+          <button type="submit">Send message</button>
+          <p id="message-status" role="status" aria-live="polite"></p>
+        </form>
       </section>
     </main>
 

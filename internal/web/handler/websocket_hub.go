@@ -167,6 +167,11 @@ func (h *WebSocketHub) Publish(userID int64, event WebSocketEvent) error {
 	return nil
 }
 
+// PublishMessage adapts service message events to the WebSocket event envelope.
+func (h *WebSocketHub) PublishMessage(userID int64, eventType string, payload json.RawMessage) error {
+	return h.Publish(userID, WebSocketEvent{Type: eventType, Payload: payload})
+}
+
 // Shutdown rejects future registrations, closes all upgraded connections,
 // and waits for their read and write pumps to finish.
 func (h *WebSocketHub) Shutdown() {

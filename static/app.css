@@ -305,6 +305,25 @@ section[hidden] {
   font-size: 0.85rem;
 }
 
+.message-form {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.message-form textarea {
+  width: 100%;
+  resize: vertical;
+}
+
+.contact-unread {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 0.1rem 0.45rem;
+  background: #2b5c9c;
+  color: #fff;
+  font-size: 0.75rem;
+}
+
 .feed-post h3 {
   margin: 0 0 0.35rem;
 }

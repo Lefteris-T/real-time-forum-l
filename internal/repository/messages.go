@@ -133,6 +133,24 @@ func (r *MessageRepository) OlderForUser(conversationID, userID int64, before Me
 	`, conversationID, createdAt, createdAt, before.ID, MessagePageSize)
 }
 
+// MarkReadForUser records read receipts for all messages sent by the other
+// conversation participant. Repeating the request is safe.
+func (r *MessageRepository) MarkReadForUser(conversationID, userID int64) error {
+	if err := validateConversationUser(conversationID, userID); err != nil {
+		return err
+	}
+	if err := participantExists(r.db, conversationID, userID); err != nil {
+		return err
+	}
+	_, err := r.db.Exec(`
+		INSERT OR IGNORE INTO message_reads (message_id, user_id, read_at)
+		SELECT id, ?, ?
+		FROM messages
+		WHERE conversation_id = ? AND sender_id != ?
+	`, userID, time.Now().UTC().Format(time.RFC3339), conversationID, userID)
+	return err
+}
+
 type conversationParticipantQuerier interface {
 	QueryRow(query string, args ...any) *sql.Row
 }

@@ -25,10 +25,14 @@ const chatTitle = document.querySelector("#chat-title");
 const chatStatus = document.querySelector("#chat-status");
 const chatHistory = document.querySelector("#chat-history");
 const historyRetry = document.querySelector("#history-retry");
+const messageForm = document.querySelector("#message-form");
+const messageBody = document.querySelector("#message-body");
+const messageStatus = document.querySelector("#message-status");
 const guestNavigation = document.querySelectorAll("[data-guest-only]");
 const authenticatedNavigation = document.querySelectorAll("[data-auth-required]");
 
 let authenticated = false;
+let activeView = "login";
 let authGeneration = 0;
 let categoriesLoaded = false;
 let categoriesLoading = false;
@@ -51,9 +55,12 @@ let historyLoading = false;
 let historyGeneration = 0;
 let historyRequest = null;
 let historyScrollTimer = null;
+const unreadMessages = new Map();
+let latestMessageNotice = "";
 const maxRealtimeRetries = 5;
 
 function showView(viewName) {
+  activeView = viewName;
   for (const panel of panels) {
     panel.hidden = panel.dataset.viewPanel !== viewName;
   }
@@ -87,6 +94,8 @@ function setAuthenticated(value) {
       realtimeRetryCount = 0;
     }
     contacts = [];
+    unreadMessages.clear();
+    latestMessageNotice = "";
     clearOnlineUsers("Sign in to see your contacts.");
     contactsRequest = null;
     contactsRefreshPending = false;
@@ -112,6 +121,9 @@ function setAuthenticated(value) {
     historyRetry.hidden = true;
     chatTitle.textContent = "Chat";
     chatStatus.textContent = "Sign in to view conversations.";
+    messageForm.hidden = true;
+    messageForm.reset();
+    messageStatus.textContent = "";
     setStatus(detailStatus, "");
     setStatus(commentsStatus, "");
   }
@@ -151,10 +163,19 @@ function renderContacts(statusMessage = "") {
     const status = document.createElement("span");
     status.className = "contact-presence";
     status.textContent = contact.online ? "Online" : "Offline";
-    item.append(dot, name, status);
+    item.append(dot, name);
+    const unread = unreadMessages.get(String(contact.id)) || 0;
+    if (unread > 0) {
+      const badge = document.createElement("span");
+      badge.className = "contact-unread";
+      badge.textContent = `${unread} new`;
+      badge.setAttribute("aria-label", `${unread} unread messages`);
+      item.append(badge);
+    }
+    item.append(status);
     contactList.append(item);
   }
-  contactStatus.textContent = statusMessage || (contacts.length
+  contactStatus.textContent = statusMessage || latestMessageNotice || (contacts.length
     ? `${contacts.length} ${contacts.length === 1 ? "contact" : "contacts"} · ${onlineCount} online.`
     : "No other users are registered yet.");
   contactStatus.hidden = false;
@@ -183,8 +204,14 @@ function loadContacts() {
         username: String(contact.username || "Unknown user"),
         online: Boolean(contact.online),
         conversation_id: Number(contact.conversation_id) || 0,
+        unread_count: Number(contact.unread_count) || 0,
         last_message_at: contact.last_message_at || null,
       }));
+      for (const contact of contacts) {
+        if (contact.unread_count > 0) unreadMessages.set(String(contact.id), contact.unread_count);
+        else unreadMessages.delete(String(contact.id));
+      }
+      refreshMessageNotice();
       if (presenceSnapshotReceived) {
         for (const contact of contacts) {
           contact.online = onlineUsers.has(String(contact.id));
@@ -219,6 +246,8 @@ function openConversation(contactButton) {
   if (!authenticated) return;
   selectedConversationID = Number(contactButton.dataset.conversationId) || 0;
   selectedConversationName = String(contactButton.dataset.contactUsername || "Contact");
+  const selectedContactID = String(contactButton.dataset.contactId || "");
+  renderContacts();
   historyGeneration += 1;
   historyRequest = null;
   historyLoading = false;
@@ -230,6 +259,9 @@ function openConversation(contactButton) {
     historyScrollTimer = null;
   }
   chatTitle.textContent = selectedConversationName;
+  messageForm.hidden = false;
+  messageStatus.textContent = "";
+  messageForm.dataset.recipientId = selectedContactID;
   chatHistory.replaceChildren();
   chatHistory.scrollTop = 0;
   showView("chat");
@@ -240,6 +272,30 @@ function openConversation(contactButton) {
   }
   chatStatus.textContent = "Loading messages…";
   void loadConversationHistory(false);
+}
+
+function refreshMessageNotice() {
+  const unreadContact = contacts.find((contact) => (unreadMessages.get(String(contact.id)) || 0) > 0);
+  latestMessageNotice = unreadContact ? `You have unread messages from ${unreadContact.username}.` : "";
+}
+
+async function markConversationRead(conversationID) {
+  try {
+    const response = await fetch(`/api/conversations/${encodeURIComponent(conversationID)}/read`, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { Accept: "application/json" },
+    });
+    if (!response.ok) throw new Error("Unable to mark messages as read.");
+    const contact = contacts.find((item) => Number(item.conversation_id) === Number(conversationID));
+    if (contact) unreadMessages.delete(String(contact.id));
+    refreshMessageNotice();
+    renderContacts();
+    if (contactsRequest) contactsRefreshPending = true;
+    await loadContacts();
+  } catch {
+    void loadContacts();
+  }
 }
 
 function renderConversationMessages() {
@@ -311,11 +367,16 @@ function loadConversationHistory(older) {
         chatHistory.scrollTop = previousTop + (chatHistory.scrollHeight - previousHeight);
         chatStatus.textContent = "";
       } else {
-        historyMessages = result.messages;
+        const byID = new Map();
+        for (const message of result.messages) byID.set(String(message.id), message);
+        for (const message of historyMessages) byID.set(String(message.id), message);
+        historyMessages = Array.from(byID.values()).sort((a, b) =>
+          a.created_at.localeCompare(b.created_at) || Number(a.id) - Number(b.id));
         historyHasOlder = Boolean(result.has_older);
         renderConversationMessages();
         chatHistory.scrollTop = chatHistory.scrollHeight;
         chatStatus.textContent = historyMessages.length ? "" : "No messages in this conversation yet.";
+        if (activeView === "chat") void markConversationRead(conversationID);
       }
     } catch {
       if (!authenticated || requestGeneration !== historyGeneration || conversationID !== selectedConversationID) return;
@@ -335,6 +396,39 @@ function loadConversationHistory(older) {
   return request;
 }
 
+function applyIncomingMessage(message) {
+  if (!message || !Number.isSafeInteger(message.id) || !Number.isSafeInteger(message.conversation_id) ||
+      !Number.isSafeInteger(message.sender_id) || typeof message.body !== "string" ||
+      typeof message.created_at !== "string") return;
+  const conversationID = message.conversation_id;
+  const isOpen = activeView === "chat" && selectedConversationID === conversationID;
+  const wasNearBottom = chatHistory.scrollHeight - chatHistory.scrollTop - chatHistory.clientHeight < 80;
+  if (isOpen) {
+    if (!historyMessages.some((item) => String(item.id) === String(message.id))) {
+      historyMessages.push(message);
+      historyMessages.sort((a, b) => a.created_at.localeCompare(b.created_at) || Number(a.id) - Number(b.id));
+      renderConversationMessages();
+      if (wasNearBottom) chatHistory.scrollTop = chatHistory.scrollHeight;
+    }
+    void markConversationRead(conversationID);
+    const senderName = String(message.sender || "A contact");
+    chatStatus.textContent = wasNearBottom
+      ? `New message from ${senderName}.`
+      : `New message from ${senderName}. Scroll down to read it.`;
+  } else {
+    const senderIsContact = contacts.some((contact) => String(contact.id) === String(message.sender_id));
+    if (senderIsContact) {
+      const senderName = String(message.sender || "A contact");
+      const contact = contacts.find((item) => String(item.id) === String(message.sender_id));
+      if (contact) unreadMessages.set(String(contact.id), (unreadMessages.get(String(contact.id)) || 0) + 1);
+      latestMessageNotice = `New private message from ${senderName}.`;
+    }
+    renderContacts();
+  }
+  if (contactsRequest) contactsRefreshPending = true;
+  else void loadContacts();
+}
+
 chatHistory.addEventListener("scroll", () => {
   if (historyScrollTimer !== null) return;
   historyScrollTimer = setTimeout(() => {
@@ -348,6 +442,46 @@ chatHistory.addEventListener("scroll", () => {
 
 historyRetry.addEventListener("click", () => {
   void loadConversationHistory(historyRetry.dataset.older === "true");
+});
+
+messageForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!authenticated || !messageForm.dataset.recipientId) return;
+  const requestGeneration = authGeneration;
+  const submitButton = messageForm.querySelector('button[type="submit"]');
+  submitButton.disabled = true;
+  messageStatus.textContent = "Sending…";
+  try {
+    const response = await fetch("/api/messages", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+      },
+      body: new URLSearchParams({ recipient_id: messageForm.dataset.recipientId, body: messageBody.value }),
+    });
+    const result = await readJSON(response);
+    if (!authenticated || requestGeneration !== authGeneration) return;
+    if (!response.ok || !result.message) throw new Error(result.error || "Unable to send message.");
+    const message = result.message;
+    selectedConversationID = Number(message.conversation_id);
+    if (!historyMessages.some((item) => String(item.id) === String(message.id))) historyMessages.push(message);
+    historyMessages.sort((a, b) => a.created_at.localeCompare(b.created_at) || Number(a.id) - Number(b.id));
+    renderConversationMessages();
+    chatHistory.scrollTop = chatHistory.scrollHeight;
+    chatStatus.textContent = "";
+    messageBody.value = "";
+    messageStatus.textContent = "";
+    latestMessageNotice = "";
+    void loadContacts();
+  } catch (error) {
+    if (authenticated && requestGeneration === authGeneration) {
+      messageStatus.textContent = error.message || "Unable to send message. Try again.";
+    }
+  } finally {
+    submitButton.disabled = false;
+  }
 });
 
 function applyPresenceEvent(event) {
@@ -388,7 +522,12 @@ function applyPresenceEvent(event) {
 }
 
 document.addEventListener("forum:realtime-event", (event) => {
-  if (authenticated) applyPresenceEvent(event.detail);
+  if (!authenticated) return;
+  if (event.detail?.type === "message.new") {
+    applyIncomingMessage(event.detail.payload?.message);
+    return;
+  }
+  applyPresenceEvent(event.detail);
 });
 
 function closeRealtimeSocket() {

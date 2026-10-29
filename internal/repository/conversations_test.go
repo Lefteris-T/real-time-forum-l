@@ -111,6 +111,40 @@ func TestConversationRepositoryOrdersContactsByActivityThenAlphabetically(t *tes
 	}
 }
 
+func TestMessageReadReceiptsPersistUnreadCountsAndMarkRead(t *testing.T) {
+	_, conversations, messages, users := newMessagingRepositories(t)
+	senderID := addMessagingTestUser(t, users, "receipt-sender")
+	recipientID := addMessagingTestUser(t, users, "receipt-recipient")
+	outsiderID := addMessagingTestUser(t, users, "receipt-outsider")
+	conversation, err := conversations.FindOrCreate(senderID, recipientID)
+	if err != nil {
+		t.Fatalf("FindOrCreate(): %v", err)
+	}
+	if _, err := messages.Create(conversation.ID, senderID, "offline message"); err != nil {
+		t.Fatalf("Create(): %v", err)
+	}
+	contacts, err := conversations.ListContacts(recipientID)
+	if err != nil {
+		t.Fatalf("ListContacts(): %v", err)
+	}
+	if len(contacts) != 2 || contacts[0].UserID != senderID || contacts[0].UnreadCount != 1 {
+		t.Fatalf("unread contacts = %+v", contacts)
+	}
+	if err := messages.MarkReadForUser(conversation.ID, recipientID); err != nil {
+		t.Fatalf("MarkReadForUser(): %v", err)
+	}
+	if err := messages.MarkReadForUser(conversation.ID, recipientID); err != nil {
+		t.Fatalf("repeated MarkReadForUser(): %v", err)
+	}
+	contacts, err = conversations.ListContacts(recipientID)
+	if err != nil || contacts[0].UnreadCount != 0 {
+		t.Fatalf("contacts after mark read = %+v, error %v", contacts, err)
+	}
+	if err := messages.MarkReadForUser(conversation.ID, outsiderID); !errors.Is(err, ErrConversationNotFound) {
+		t.Fatalf("outsider MarkReadForUser() error = %v, want conversation not found", err)
+	}
+}
+
 func newMessagingRepositories(t *testing.T) (*sql.DB, *ConversationRepository, *MessageRepository, *UserRepository) {
 	t.Helper()
 	db, err := database.Open(filepath.Join(t.TempDir(), "forum.db"))

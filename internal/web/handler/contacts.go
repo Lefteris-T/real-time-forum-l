@@ -36,6 +36,7 @@ type contactResponse struct {
 	Username       string  `json:"username"`
 	Online         bool    `json:"online"`
 	ConversationID int64   `json:"conversation_id,omitempty"`
+	UnreadCount    int     `json:"unread_count"`
 	LastMessageAt  *string `json:"last_message_at"`
 }
 
@@ -64,6 +65,7 @@ func (h *ContactListHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			ID:             contact.UserID,
 			Username:       contact.Username,
 			ConversationID: contact.ConversationID,
+			UnreadCount:    contact.UnreadCount,
 		}
 		_, item.Online = onlineUsers[contact.UserID]
 		if contact.LastMessageAt != nil {
