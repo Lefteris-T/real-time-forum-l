@@ -591,6 +591,8 @@ func TestForumRouterMethods(t *testing.T) {
 		MessageHistory:  okHandler,
 		MessageRead:     okHandler,
 		MessageSend:     okHandler,
+		MessageImage:    okHandler,
+		Profile:         okHandler,
 		PostAPI:         okHandler,
 		WebSocket:       okHandler,
 		PostCreation:    okHandler,
@@ -709,9 +711,33 @@ func TestForumRouterMethods(t *testing.T) {
 			want:   http.StatusNoContent,
 		},
 		{
+			name:   "get private message image",
+			method: http.MethodGet,
+			path:   "/api/messages/19/image",
+			want:   http.StatusNoContent,
+		},
+		{
 			name:   "mark conversation messages read",
 			method: http.MethodPost,
 			path:   "/api/conversations/14/read",
+			want:   http.StatusNoContent,
+		},
+		{
+			name:   "view own profile",
+			method: http.MethodGet,
+			path:   "/api/profile",
+			want:   http.StatusNoContent,
+		},
+		{
+			name:   "update own profile",
+			method: http.MethodPut,
+			path:   "/api/profile",
+			want:   http.StatusNoContent,
+		},
+		{
+			name:   "view public profile",
+			method: http.MethodGet,
+			path:   "/api/users/3/profile",
 			want:   http.StatusNoContent,
 		},
 		{

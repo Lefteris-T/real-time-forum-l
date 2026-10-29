@@ -17,6 +17,7 @@
       <button type="button" data-view="feed" data-auth-required hidden>Feed</button>
       <button type="button" data-view="create-post" data-auth-required hidden>Create Post</button>
       <button type="button" data-view="chat" data-auth-required hidden>Chat</button>
+      <button type="button" data-view="profile" data-profile-owner data-auth-required hidden>My Profile</button>
       <button type="button" data-logout hidden>Logout</button>
     </nav>
   </header>
@@ -209,10 +210,30 @@
         <div id="chat-history" class="chat-history" role="log" aria-live="polite" tabindex="0"></div>
         <form id="message-form" class="message-form" hidden>
           <label for="message-body">Message</label>
-          <textarea id="message-body" name="body" rows="3" maxlength="2000" required></textarea>
+          <textarea id="message-body" name="body" rows="3" maxlength="2000"></textarea>
+          <label for="message-image">Optional image (JPEG, PNG, or GIF; max 5 MiB)</label>
+          <input id="message-image" name="image" type="file" accept="image/jpeg,image/png,image/gif">
           <button type="submit">Send message</button>
           <p id="message-status" role="status" aria-live="polite"></p>
         </form>
+      </section>
+
+      <section data-view-panel="profile" hidden>
+        <h2 id="profile-title">Profile</h2>
+        <p id="profile-status" role="status" aria-live="polite"></p>
+        <dl id="profile-details" class="profile-details"></dl>
+        <form id="profile-form" class="profile-form" hidden>
+          <label for="profile-first-name">First name</label>
+          <input id="profile-first-name" name="first_name" maxlength="80" required>
+          <label for="profile-last-name">Last name</label>
+          <input id="profile-last-name" name="last_name" maxlength="80" required>
+          <label for="profile-age">Age</label>
+          <input id="profile-age" name="age" type="number" min="1" max="120" required>
+          <label for="profile-gender">Gender</label>
+          <input id="profile-gender" name="gender" maxlength="40" required>
+          <button type="submit">Save profile</button>
+        </form>
+        <button type="button" data-view="feed">Back to feed</button>
       </section>
     </main>
 

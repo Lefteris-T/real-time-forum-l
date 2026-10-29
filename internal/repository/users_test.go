@@ -1,10 +1,12 @@
 package repository
 
 import (
+	"database/sql"
 	"path/filepath"
 	"testing"
 
 	"forum/internal/database"
+	"forum/internal/model"
 )
 
 func TestUserRepositoryCreateAndFindByEmail(t *testing.T) {
@@ -105,6 +107,52 @@ func TestUserRepositoryFindByID(t *testing.T) {
 		t.Fatalf("profile = %+v, want persisted profile fields", user)
 	}
 }
+
+func TestUserRepositoryPublicProfileAndOwnerUpdateFields(t *testing.T) {
+	db, repo := newUserTestDB(t)
+	id, err := insertTestUser(repo, "private@example.com", "public-name", "private-hash")
+	if err != nil {
+		t.Fatalf("Create(): %v", err)
+	}
+	profile, err := repo.PublicProfileByID(id)
+	if err != nil {
+		t.Fatalf("PublicProfileByID(): %v", err)
+	}
+	if profile.Username != "public-name" || profile.FirstName != "Test" || profile.LastName != "User" || profile.Age != 30 {
+		t.Fatalf("public profile = %+v", profile)
+	}
+	if err := repo.UpdateProfile(id, model.ProfileUpdate{FirstName: "New", LastName: "Name", Age: 40, Gender: "other"}); err != nil {
+		t.Fatalf("UpdateProfile(): %v", err)
+	}
+	profile, err = repo.PublicProfileByID(id)
+	if err != nil || profile.FirstName != "New" || profile.LastName != "Name" || profile.Age != 40 || profile.Gender != "other" {
+		t.Fatalf("updated profile = %+v, error %v", profile, err)
+	}
+	var email, passwordHash string
+	if err := db.QueryRow("SELECT email, password_hash FROM users WHERE id = ?", id).Scan(&email, &passwordHash); err != nil {
+		t.Fatalf("query private fields: %v", err)
+	}
+	if email != "private@example.com" || passwordHash != "private-hash" {
+		t.Fatalf("profile update changed private fields: %q/%q", email, passwordHash)
+	}
+	if err := repo.UpdateProfile(id+1000, model.ProfileUpdate{FirstName: "Test", LastName: "User", Age: 30, Gender: "test"}); err != ErrUserNotFound {
+		t.Fatalf("UpdateProfile(missing) error = %v", err)
+	}
+}
+
+func newUserTestDB(t *testing.T) (*sql.DB, *UserRepository) {
+	t.Helper()
+	db, err := database.Open(filepath.Join(t.TempDir(), "forum.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if err := database.Migrate(db, "../../migrations"); err != nil {
+		t.Fatal(err)
+	}
+	return db, NewUserRepository(db)
+}
+
 func TestUserRepositoryReturnsNotFound(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "forum.db")
 

@@ -38,7 +38,7 @@ func (f *messageHistoryFake) OlderForUser(conversationID, userID int64, cursor r
 func TestMessageHistoryHandlerReturnsLatestPageForAuthenticatedUser(t *testing.T) {
 	createdAt := time.Date(2026, 10, 29, 15, 4, 5, 0, time.UTC)
 	reader := &messageHistoryFake{latest: []model.Message{{
-		ID: 5, ConversationID: 9, SenderID: 3, SenderUsername: "alex", Body: "hello", CreatedAt: createdAt,
+		ID: 5, ConversationID: 9, SenderID: 3, SenderUsername: "alex", Body: "hello", ImageMIME: "image/png", CreatedAt: createdAt,
 	}}}
 	handler := NewMessageHistoryHandler(reader)
 	req := httptest.NewRequest(http.MethodGet, "/api/conversations/9/messages", nil)
@@ -53,7 +53,7 @@ func TestMessageHistoryHandlerReturnsLatestPageForAuthenticatedUser(t *testing.T
 	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if len(response.Messages) != 1 || response.Messages[0].Sender != "alex" || response.Messages[0].Body != "hello" || response.Messages[0].CreatedAt != "2026-10-29T15:04:05Z" || response.HasOlder {
+	if len(response.Messages) != 1 || response.Messages[0].Sender != "alex" || response.Messages[0].Body != "hello" || response.Messages[0].CreatedAt != "2026-10-29T15:04:05Z" || response.Messages[0].ImageURL != "/api/messages/5/image" || response.HasOlder {
 		t.Fatalf("response = %+v", response)
 	}
 	if strings.Contains(recorder.Body.String(), "email") {

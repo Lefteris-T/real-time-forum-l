@@ -27,7 +27,12 @@ const chatHistory = document.querySelector("#chat-history");
 const historyRetry = document.querySelector("#history-retry");
 const messageForm = document.querySelector("#message-form");
 const messageBody = document.querySelector("#message-body");
+const messageImage = document.querySelector("#message-image");
 const messageStatus = document.querySelector("#message-status");
+const profileTitle = document.querySelector("#profile-title");
+const profileStatus = document.querySelector("#profile-status");
+const profileDetails = document.querySelector("#profile-details");
+const profileForm = document.querySelector("#profile-form");
 const guestNavigation = document.querySelectorAll("[data-guest-only]");
 const authenticatedNavigation = document.querySelectorAll("[data-auth-required]");
 
@@ -126,6 +131,9 @@ function setAuthenticated(value) {
     messageForm.hidden = true;
     messageForm.reset();
     messageStatus.textContent = "";
+    profileForm.hidden = true;
+    profileDetails.replaceChildren();
+    profileStatus.textContent = "";
     setStatus(detailStatus, "");
     setStatus(commentsStatus, "");
   }
@@ -162,10 +170,15 @@ function renderContacts(statusMessage = "") {
     name.dataset.contactUsername = contact.username;
     name.dataset.conversationId = String(contact.conversation_id);
     name.textContent = contact.username;
+    const profileButton = document.createElement("button");
+    profileButton.className = "contact-profile";
+    profileButton.type = "button";
+    profileButton.dataset.openProfile = String(contact.id);
+    profileButton.textContent = "Profile";
     const status = document.createElement("span");
     status.className = "contact-presence";
     status.textContent = contact.online ? "Online" : "Offline";
-    item.append(dot, name);
+    item.append(dot, name, profileButton);
     const unread = unreadMessages.get(String(contact.id)) || 0;
     if (unread > 0) {
       const badge = document.createElement("span");
@@ -318,6 +331,14 @@ function renderConversationMessages() {
     body.textContent = String(message.body);
     metadata.append(sender, sentAt);
     article.append(metadata, body);
+    if (typeof message.image_url === "string" && message.image_url.startsWith("/api/messages/")) {
+      const image = document.createElement("img");
+      image.className = "chat-message-image";
+      image.src = message.image_url;
+      image.alt = `Image attached by ${String(message.sender || "a contact")}`;
+      image.loading = "lazy";
+      article.append(image);
+    }
     chatHistory.append(article);
   }
 }
@@ -469,9 +490,12 @@ messageForm.addEventListener("submit", async (event) => {
       credentials: "same-origin",
       headers: {
         Accept: "application/json",
-        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
       },
-      body: new URLSearchParams({ recipient_id: messageForm.dataset.recipientId, body: messageBody.value }),
+      body: (() => {
+        const form = new FormData(messageForm);
+        form.set("recipient_id", messageForm.dataset.recipientId);
+        return form;
+      })(),
     });
     const result = await readJSON(response);
     if (!authenticated || requestGeneration !== authGeneration) return;
@@ -484,12 +508,44 @@ messageForm.addEventListener("submit", async (event) => {
     chatHistory.scrollTop = chatHistory.scrollHeight;
     chatStatus.textContent = "";
     messageBody.value = "";
+    messageImage.value = "";
     messageStatus.textContent = "";
     latestMessageNotice = "";
     void loadContacts();
   } catch (error) {
     if (authenticated && requestGeneration === authGeneration) {
       messageStatus.textContent = error.message || "Unable to send message. Try again.";
+    }
+  } finally {
+    submitButton.disabled = false;
+  }
+});
+
+profileForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!authenticated) return;
+  const requestGeneration = authGeneration;
+  const submitButton = profileForm.querySelector('button[type="submit"]');
+  submitButton.disabled = true;
+  profileStatus.textContent = "Saving profile…";
+  try {
+    const response = await fetch("/api/profile", {
+      method: "PUT",
+      credentials: "same-origin",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+      },
+      body: new URLSearchParams(new FormData(profileForm)),
+    });
+    const result = await readJSON(response);
+    if (!authenticated || requestGeneration !== authGeneration) return;
+    if (!response.ok) throw new Error(result.error || "Unable to save profile.");
+    profileStatus.textContent = "Profile saved.";
+    await loadProfile(0, true);
+  } catch (error) {
+    if (authenticated && requestGeneration === authGeneration) {
+      profileStatus.textContent = error.message || "Unable to save profile.";
     }
   } finally {
     submitButton.disabled = false;
@@ -655,6 +711,11 @@ async function readJSON(response) {
 }
 
 document.addEventListener("click", (event) => {
+  const profileButton = event.target.closest("[data-open-profile]");
+  if (profileButton) {
+    void loadProfile(Number(profileButton.dataset.openProfile), false);
+    return;
+  }
   const contactButton = event.target.closest("[data-open-contact]");
   if (contactButton) {
     void openConversation(contactButton);
@@ -679,6 +740,10 @@ document.addEventListener("click", (event) => {
 
   if (button.dataset.view === "feed" && authenticated) {
     void loadFeed();
+  }
+
+  if (button.hasAttribute("data-profile-owner") && authenticated) {
+    void loadProfile(0, true);
   }
 });
 
@@ -756,6 +821,48 @@ async function loadCategories() {
 function formatPostDate(value) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
+}
+
+async function loadProfile(profileID, owner) {
+  if (!authenticated) return;
+  const requestGeneration = authGeneration;
+  profileTitle.textContent = owner ? "My Profile" : "Profile";
+  profileStatus.textContent = "Loading profile…";
+  profileDetails.replaceChildren();
+  profileForm.hidden = true;
+  showView("profile");
+  const url = owner ? "/api/profile" : `/api/users/${encodeURIComponent(profileID)}/profile`;
+  try {
+    const response = await fetch(url, { credentials: "same-origin", headers: { Accept: "application/json" } });
+    const result = await readJSON(response);
+    if (!authenticated || requestGeneration !== authGeneration) return;
+    if (!response.ok || !result.profile) throw new Error(result.error || "Unable to load profile.");
+    const profile = result.profile;
+    profileTitle.textContent = profile.username;
+    const fields = [
+      ["Nickname", profile.username], ["First name", profile.first_name], ["Last name", profile.last_name],
+      ["Age", String(profile.age)], ["Gender", profile.gender],
+    ];
+    profileDetails.replaceChildren();
+    for (const [label, value] of fields) {
+      const term = document.createElement("dt");
+      term.textContent = label;
+      const detail = document.createElement("dd");
+      detail.textContent = String(value);
+      profileDetails.append(term, detail);
+    }
+    if (owner) {
+      profileForm.elements.namedItem("first_name").value = profile.first_name;
+      profileForm.elements.namedItem("last_name").value = profile.last_name;
+      profileForm.elements.namedItem("age").value = String(profile.age);
+      profileForm.elements.namedItem("gender").value = profile.gender;
+    }
+    profileForm.hidden = !owner;
+    profileStatus.textContent = owner ? "Your public profile. Email and account credentials are private." : "Public profile.";
+  } catch (error) {
+    if (!authenticated || requestGeneration !== authGeneration) return;
+    profileStatus.textContent = error.message || "Unable to load profile.";
+  }
 }
 
 function renderFeed(posts) {

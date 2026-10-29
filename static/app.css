@@ -269,6 +269,33 @@ section[hidden] {
   text-decoration: underline;
 }
 
+.contact-profile {
+  padding: 0.3rem 0.45rem;
+  font-size: 0.78rem;
+}
+
+.profile-details {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.45rem 1rem;
+  margin: 1rem 0;
+}
+
+.profile-details dt {
+  color: #aab2c0;
+}
+
+.profile-details dd {
+  margin: 0;
+}
+
+.profile-form {
+  display: grid;
+  gap: 0.5rem;
+  max-width: 28rem;
+  margin: 1.5rem 0;
+}
+
 .chat-history {
   display: flex;
   flex-direction: column;
@@ -288,6 +315,15 @@ section[hidden] {
   padding: 0.65rem 0.75rem;
   border-radius: 0.45rem;
   background: #1a202b;
+}
+
+.chat-message-image {
+  display: block;
+  max-width: min(100%, 32rem);
+  max-height: 24rem;
+  margin-top: 0.65rem;
+  border-radius: 0.4rem;
+  object-fit: contain;
 }
 
 .chat-message p {

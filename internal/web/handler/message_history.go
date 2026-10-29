@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -39,6 +40,7 @@ type messageHistoryItem struct {
 	Sender         string `json:"sender"`
 	Body           string `json:"body"`
 	CreatedAt      string `json:"created_at"`
+	ImageURL       string `json:"image_url,omitempty"`
 }
 
 func (h *MessageHistoryHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -88,14 +90,18 @@ func (h *MessageHistoryHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 		HasOlder: len(messages) == repository.MessagePageSize,
 	}
 	for _, message := range messages {
-		response.Messages = append(response.Messages, messageHistoryItem{
+		item := messageHistoryItem{
 			ID:             message.ID,
 			ConversationID: message.ConversationID,
 			SenderID:       message.SenderID,
 			Sender:         message.SenderUsername,
 			Body:           message.Body,
 			CreatedAt:      message.CreatedAt.Format(time.RFC3339),
-		})
+		}
+		if message.ImageMIME != "" {
+			item.ImageURL = fmt.Sprintf("/api/messages/%d/image", message.ID)
+		}
+		response.Messages = append(response.Messages, item)
 	}
 	h.writeJSON(w, http.StatusOK, response)
 }

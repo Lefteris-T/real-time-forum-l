@@ -9,5 +9,12 @@ type Message struct {
 	SenderID       int64
 	SenderUsername string
 	Body           string
+	ImageMIME      string
 	CreatedAt      time.Time
+}
+
+// MessageImage is validated image content attached to one private message.
+type MessageImage struct {
+	MIMEType string
+	Data     []byte
 }

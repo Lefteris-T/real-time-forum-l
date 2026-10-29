@@ -660,6 +660,11 @@ items individually and keep them out of the mandatory acceptance claim.
 
 ## Bonus A — User Profiles
 
+Public fields are nickname, first name, last name, age, and gender. Account
+owners can edit first name, last name, age, and gender; nickname is the
+registered account identifier. Email, password hashes, and session data are
+private.
+
 ### Learn
 
 - separate public profile fields from private account data
@@ -680,6 +685,10 @@ feat: add user profiles
 ```
 
 ## Bonus B — Images In Private Messages
+
+Accept JPEG, PNG, and GIF images up to 5 MiB. Identify the format from the file
+contents, reject SVG and other formats, store image bytes in SQLite, and serve
+them only to conversation participants.
 
 ### Learn
 

@@ -1,8 +1,12 @@
 package repository
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"testing"
 	"time"
 
@@ -134,6 +138,41 @@ func TestMessageRepositoryReturnsEmptyHistoryForParticipant(t *testing.T) {
 		CreatedAt: time.Date(2026, 10, 29, 10, 0, 0, 0, time.UTC), ID: 1,
 	}); err != nil {
 		t.Fatalf("OlderForUser() empty history: %v", err)
+	}
+}
+
+func TestMessageRepositoryStoresImagesAndRestrictsReadsToParticipants(t *testing.T) {
+	_, conversations, messages, users := newMessagingRepositories(t)
+	senderID := addMessagingTestUser(t, users, "image-sender")
+	recipientID := addMessagingTestUser(t, users, "image-recipient")
+	outsiderID := addMessagingTestUser(t, users, "image-outsider")
+	conversation, err := conversations.FindOrCreate(senderID, recipientID)
+	if err != nil {
+		t.Fatalf("FindOrCreate(): %v", err)
+	}
+	encoded := new(bytes.Buffer)
+	imageData := image.NewRGBA(image.Rect(0, 0, 1, 1))
+	imageData.Set(0, 0, color.RGBA{R: 12, G: 34, B: 56, A: 255})
+	if err := png.Encode(encoded, imageData); err != nil {
+		t.Fatalf("encode PNG: %v", err)
+	}
+	message, err := messages.CreateWithImage(conversation.ID, senderID, "caption", model.MessageImage{MIMEType: "image/png", Data: encoded.Bytes()})
+	if err != nil {
+		t.Fatalf("CreateWithImage(): %v", err)
+	}
+	if message.ImageMIME != "image/png" {
+		t.Fatalf("message image MIME = %q", message.ImageMIME)
+	}
+	history, err := messages.LatestForUser(conversation.ID, recipientID)
+	if err != nil || len(history) != 1 || history[0].ImageMIME != "image/png" {
+		t.Fatalf("image history = %+v, error %v", history, err)
+	}
+	stored, err := messages.ImageForUser(message.ID, recipientID)
+	if err != nil || stored.MIMEType != "image/png" || !bytes.Equal(stored.Data, encoded.Bytes()) {
+		t.Fatalf("stored image = %s/%d bytes, error %v", stored.MIMEType, len(stored.Data), err)
+	}
+	if _, err := messages.ImageForUser(message.ID, outsiderID); !errors.Is(err, ErrMessageImageNotFound) {
+		t.Fatalf("outsider image read error = %v, want not found", err)
 	}
 }
 

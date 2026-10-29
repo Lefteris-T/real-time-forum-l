@@ -45,3 +45,14 @@ Bonus
 +Can the users send images through the private messages?
 +Is the code using synchronicity (Promises and Go routines/channels) to increase performance?
 +Do you think this project is well done in general ?
+
+Bonus A checks: open a contact profile, confirm it shows nickname, first and
+last name, age, and gender without email or account credentials. Edit the
+signed-in user's profile and reload it; verify the changes persisted. Confirm
+the public profile endpoint does not accept edits for another user.
+
+Bonus B checks: send JPEG, PNG, and GIF attachments with text and by themselves.
+Verify each image displays in both clients and after reopening the conversation.
+Try a renamed non-image file and an image larger than 5 MiB; both must be
+rejected. Request an image as a nonparticipant and confirm the server returns
+not found.

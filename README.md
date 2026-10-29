@@ -3,7 +3,9 @@
 A single-page forum built with Go, SQLite, plain JavaScript, and WebSockets.
 It supports registration and login, categorized posts and comments, live user
 presence, private conversations, persisted message history, unread counts, and
-live message delivery.
+live message delivery. Authenticated users can view public profiles and edit
+their own profile details. Private messages can include participant-protected
+JPEG, PNG, and GIF attachments.
 
 ## Requirements
 

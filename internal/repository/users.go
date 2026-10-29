@@ -177,6 +177,50 @@ func (r *UserRepository) ByID(id int64) (model.User, error) {
 	return user, nil
 }
 
+// PublicProfileByID returns only fields intended for a profile page.
+func (r *UserRepository) PublicProfileByID(id int64) (model.Profile, error) {
+	var profile model.Profile
+	err := r.db.QueryRow(`
+		SELECT id, username, first_name, last_name, age, gender
+		FROM users
+		WHERE id = ?
+	`, id).Scan(
+		&profile.ID,
+		&profile.Username,
+		&profile.FirstName,
+		&profile.LastName,
+		&profile.Age,
+		&profile.Gender,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return model.Profile{}, ErrUserNotFound
+	}
+	if err != nil {
+		return model.Profile{}, fmt.Errorf("find public profile: %w", err)
+	}
+	return profile, nil
+}
+
+// UpdateProfile changes only the editable public profile fields.
+func (r *UserRepository) UpdateProfile(userID int64, update model.ProfileUpdate) error {
+	result, err := r.db.Exec(`
+		UPDATE users
+		SET first_name = ?, last_name = ?, age = ?, gender = ?
+		WHERE id = ?
+	`, update.FirstName, update.LastName, update.Age, update.Gender, userID)
+	if err != nil {
+		return fmt.Errorf("update public profile: %w", err)
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("count updated profile: %w", err)
+	}
+	if count == 0 {
+		return ErrUserNotFound
+	}
+	return nil
+}
+
 func translateUserConstraintError(err error) error {
 	message := err.Error()
 

@@ -181,6 +181,8 @@ func buildHandler(
 		webSocketHub,
 	)
 
+	profileService := service.NewProfileService(users)
+
 	reactionService := service.NewReactionService(
 		reactions,
 	)
@@ -258,6 +260,8 @@ func buildHandler(
 			MessageHistory:  handler.NewMessageHistoryHandler(messages),
 			MessageRead:     handler.NewMessageReadHandler(messages),
 			MessageSend:     handler.NewMessageSendHandler(messageService),
+			MessageImage:    handler.NewMessageImageHandler(messages),
+			Profile:         handler.NewProfileHandler(profileService),
 			PostAPI:         handler.NewPostAPIHandler(postService, posts),
 			PostDetailAPI:   handler.NewPostDetailAPIHandler(posts),
 			CommentAPI:      handler.NewCommentAPIHandler(commentService),

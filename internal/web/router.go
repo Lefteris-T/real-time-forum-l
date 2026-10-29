@@ -27,6 +27,8 @@ type Handlers struct {
 	MessageHistory  http.Handler
 	MessageRead     http.Handler
 	MessageSend     http.Handler
+	MessageImage    http.Handler
+	Profile         http.Handler
 	PostAPI         http.Handler
 	PostDetailAPI   http.Handler
 	CommentAPI      http.Handler
@@ -155,6 +157,21 @@ func NewForumRouter(h Handlers) http.Handler {
 			Methods: []string{http.MethodPost},
 			Pattern: "/api/messages",
 			Handler: middleware.RequireAuth(h.MessageSend),
+		},
+		{
+			Methods: nil,
+			Pattern: "/api/messages/",
+			Handler: middleware.RequireAuth(h.MessageImage),
+		},
+		{
+			Methods: []string{http.MethodGet, http.MethodPut},
+			Pattern: "/api/profile",
+			Handler: middleware.RequireAuth(h.Profile),
+		},
+		{
+			Methods: nil,
+			Pattern: "/api/users/",
+			Handler: middleware.RequireAuth(h.Profile),
 		},
 		{
 			Methods: nil,

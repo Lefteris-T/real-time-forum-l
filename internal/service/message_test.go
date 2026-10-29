@@ -1,12 +1,17 @@
 package service
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"image"
+	"image/color"
+	"image/png"
 	"testing"
 	"time"
 
 	"forum/internal/model"
+	"forum/internal/validation"
 )
 
 type messageConversationFake struct {
@@ -25,6 +30,15 @@ type messageWriterFake struct {
 	err     error
 	args    [3]any
 	called  bool
+	image   model.MessageImage
+}
+
+func (f *messageWriterFake) CreateWithImage(conversationID, senderID int64, body string, image model.MessageImage) (model.Message, error) {
+	f.called = true
+	f.args = [3]any{conversationID, senderID, body}
+	f.image = image
+	f.message.ImageMIME = image.MIMEType
+	return f.message, f.err
 }
 
 func (f *messageWriterFake) Create(conversationID, senderID int64, body string) (model.Message, error) {
@@ -98,5 +112,35 @@ func TestMessageServiceValidatesBeforePersistenceAndKeepsOfflineSendDurable(t *t
 	}
 	if !messages.called {
 		t.Fatal("message was not persisted when no recipient connection exists")
+	}
+}
+
+func TestMessageServiceValidatesAndPublishesPrivateImageURL(t *testing.T) {
+	imageBuffer := new(bytes.Buffer)
+	imageData := image.NewRGBA(image.Rect(0, 0, 1, 1))
+	imageData.Set(0, 0, color.RGBA{R: 20, G: 40, B: 60, A: 255})
+	if err := png.Encode(imageBuffer, imageData); err != nil {
+		t.Fatalf("encode PNG: %v", err)
+	}
+	conversations := &messageConversationFake{conversation: model.Conversation{ID: 31}}
+	messages := &messageWriterFake{message: model.Message{ID: 17, ConversationID: 31, SenderID: 2, SenderUsername: "sam", CreatedAt: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)}}
+	events := &messagePublisherFake{}
+	service := NewMessageService(conversations, messages, events)
+	message, err := service.SendWithImage(2, 3, "", imageBuffer.Bytes())
+	if err != nil {
+		t.Fatalf("SendWithImage(): %v", err)
+	}
+	if message.ImageMIME != "image/png" || messages.image.MIMEType != "image/png" || !bytes.Equal(messages.image.Data, imageBuffer.Bytes()) {
+		t.Fatalf("stored image = %+v, message MIME %q", messages.image, message.ImageMIME)
+	}
+	var payload messageEventPayload
+	if err := json.Unmarshal(events.payload[0], &payload); err != nil {
+		t.Fatalf("decode event: %v", err)
+	}
+	if payload.Message.ImageURL != "/api/messages/17/image" {
+		t.Fatalf("event image URL = %q", payload.Message.ImageURL)
+	}
+	if _, err := service.SendWithImage(2, 3, "", []byte("not an image")); !errors.Is(err, validation.ErrInvalidMessageImage) {
+		t.Fatalf("invalid image error = %v", err)
 	}
 }

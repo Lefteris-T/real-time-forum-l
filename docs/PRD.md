@@ -105,6 +105,12 @@ read receipts, so the notice and count remain after logout or disconnect and
 are cleared when the user opens that conversation. HTTP is the command path;
 WebSockets carry live delivery and presence events.
 
+As a bonus, a message may include a JPEG, PNG, or GIF image up to 5 MiB. The
+server detects and fully decodes the image format instead of trusting the
+filename or submitted content type. Image bytes are stored with the message in
+SQLite and the image endpoint checks conversation membership before returning
+them.
+
 Each conversation represents one unordered user pair. Store the IDs as
 `user_low_id` and `user_high_id`, require `user_low_id < user_high_id`, and
 enforce uniqueness on the pair. Keep nullable `last_message_at` on the
@@ -193,8 +199,14 @@ The mandatory project must pass every applicable check in `docs/audit.md`:
 
 Do not begin these until mandatory acceptance passes:
 
-- user profiles
-- images in private messages
+- profiles expose nickname, first name, last name, age, and gender. The owner
+  can edit first name, last name, age, and gender; nickname remains the stable
+  account identifier. Email, password hashes, session data, and other
+  authentication data remain private.
+- private messages may include JPEG, PNG, or GIF attachments up to 5 MiB. The
+  server identifies the image from its bytes, stores it in SQLite, and serves
+  it only to conversation participants. SVG and other active formats are not
+  accepted.
 - measured performance improvements and additional code-quality work
 
 Video and screen sharing are mentioned as possibilities in the exercise

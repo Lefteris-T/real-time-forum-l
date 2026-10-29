@@ -1,7 +1,12 @@
 package handler
 
 import (
+	"bytes"
 	"encoding/json"
+	"image"
+	"image/color"
+	"image/png"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -17,8 +22,14 @@ import (
 type messageSendFake struct {
 	senderID, recipientID int64
 	body                  string
+	imageData             []byte
 	message               model.Message
 	err                   error
+}
+
+func (f *messageSendFake) SendWithImage(senderID, recipientID int64, body string, imageData []byte) (model.Message, error) {
+	f.senderID, f.recipientID, f.body, f.imageData = senderID, recipientID, body, imageData
+	return f.message, f.err
 }
 
 func (f *messageSendFake) Send(senderID, recipientID int64, body string) (model.Message, error) {
@@ -63,5 +74,37 @@ func TestMessageSendHandlerRejectsGuestsAndInvalidRecipient(t *testing.T) {
 	NewMessageSendHandler(&messageSendFake{err: service.ErrInvalidMessageRecipient}).ServeHTTP(recorder, req)
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("invalid recipient status = %d", recorder.Code)
+	}
+}
+
+func TestMessageSendHandlerAcceptsMultipartImage(t *testing.T) {
+	imageBuffer := new(bytes.Buffer)
+	imageData := image.NewRGBA(image.Rect(0, 0, 1, 1))
+	imageData.Set(0, 0, color.RGBA{R: 80, G: 90, B: 100, A: 255})
+	if err := png.Encode(imageBuffer, imageData); err != nil {
+		t.Fatalf("encode PNG: %v", err)
+	}
+	body := new(bytes.Buffer)
+	writer := multipart.NewWriter(body)
+	_ = writer.WriteField("recipient_id", "9")
+	_ = writer.WriteField("body", "caption")
+	file, err := writer.CreateFormFile("image", "not-trusted.txt")
+	if err != nil {
+		t.Fatalf("create upload field: %v", err)
+	}
+	if _, err := file.Write(imageBuffer.Bytes()); err != nil {
+		t.Fatalf("write upload: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+	sender := &messageSendFake{message: model.Message{ID: 5, ConversationID: 8, SenderID: 3, SenderUsername: "alex", Body: "caption", ImageMIME: "image/png"}}
+	req := httptest.NewRequest(http.MethodPost, "/api/messages", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req = req.WithContext(middleware.ContextWithUser(req.Context(), model.User{ID: 3}))
+	recorder := httptest.NewRecorder()
+	NewMessageSendHandler(sender).ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusCreated || sender.recipientID != 9 || sender.body != "caption" || !bytes.Equal(sender.imageData, imageBuffer.Bytes()) {
+		t.Fatalf("status/upload = %d, recipient %d, body %q, image bytes %d", recorder.Code, sender.recipientID, sender.body, len(sender.imageData))
 	}
 }
