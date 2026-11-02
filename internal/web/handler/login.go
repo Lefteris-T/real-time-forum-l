@@ -75,6 +75,7 @@ func (h *LoginHandler) handlePost(
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	if err := r.ParseForm(); err != nil {
 		writeAuthJSON(w, http.StatusBadRequest, authResponse{Error: "invalid form"})
 		return

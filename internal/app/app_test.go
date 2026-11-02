@@ -117,6 +117,7 @@ func TestBuildHandlerAppliesLoginRateLimit(t *testing.T) {
 			"Content-Type",
 			"application/x-www-form-urlencoded",
 		)
+		req.Header.Set("Origin", "http://example.com")
 		req.RemoteAddr = "203.0.113.10:4567"
 
 		rec := httptest.NewRecorder()
@@ -195,6 +196,9 @@ func TestGuestAccessBoundaries(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			request := httptest.NewRequest(tt.method, tt.path, nil)
+			if tt.method == http.MethodPost {
+				request.Header.Set("Origin", "http://example.com")
+			}
 			response := httptest.NewRecorder()
 
 			handler.ServeHTTP(response, request)

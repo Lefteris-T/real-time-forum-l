@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"forum/internal/config"
@@ -101,11 +102,17 @@ func buildHandler(
 	// services feed handlers, and handlers are mounted on the router.
 	databaseDir := filepath.Dir(cfg.DatabasePath)
 
-	if err := os.MkdirAll(databaseDir, 0755); err != nil {
+	if err := os.MkdirAll(databaseDir, 0700); err != nil {
 		return nil, nil, fmt.Errorf(
 			"create database directory: %w",
 			err,
 		)
+	}
+	if err := secureDatabaseDirectory(databaseDir); err != nil {
+		return nil, nil, fmt.Errorf("secure database directory: %w", err)
+	}
+	if err := secureDatabaseFile(cfg.DatabasePath); err != nil {
+		return nil, nil, fmt.Errorf("secure database file: %w", err)
 	}
 	db, err := database.Open(cfg.DatabasePath)
 	if err != nil {
@@ -114,7 +121,7 @@ func buildHandler(
 			err,
 		)
 	}
-	rateLimiter, err := middleware.NewHTTPRateLimiter()
+	rateLimiter, err := middleware.NewHTTPRateLimiter(cfg.TrustedProxyCIDRs)
 	if err != nil {
 		db.Close()
 
@@ -265,7 +272,7 @@ func buildHandler(
 			PostAPI:         handler.NewPostAPIHandler(postService, posts),
 			PostDetailAPI:   handler.NewPostDetailAPIHandler(posts),
 			CommentAPI:      handler.NewCommentAPIHandler(commentService),
-			WebSocket:       handler.NewWebSocketHandler(webSocketHub),
+			WebSocket:       handler.NewWebSocketHandler(webSocketHub, cfg.PublicOrigin),
 			PostCreation:    postCreationHandler,
 			PostDetail:      postDetailHandler,
 			CommentCreate:   commentHandler,
@@ -285,8 +292,9 @@ func buildHandler(
 		users,
 	)
 
-	appHandler := authenticate(router)
-	appHandler = rateLimiter.Middleware(appHandler)
+	appHandler := rateLimiter.Middleware(router)
+	appHandler = middleware.CSRFProtection(cfg.PublicOrigin)(appHandler)
+	appHandler = authenticate(appHandler)
 
 	logger := log.New(
 		os.Stdout,
@@ -300,6 +308,65 @@ func buildHandler(
 	)
 
 	return appHandler, cleanup, nil
+}
+
+func secureDatabaseDirectory(path string) error {
+	cleanPath := filepath.Clean(path)
+	if cleanPath == filepath.Clean(os.TempDir()) {
+		return nil
+	}
+	info, err := os.Lstat(cleanPath)
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return fmt.Errorf("database directory must be a real directory")
+	}
+	if info.Mode().Perm()&0077 == 0 {
+		return nil
+	}
+	if filepath.Base(cleanPath) == "data" || isDedicatedTempDirectory(cleanPath) {
+		return os.Chmod(cleanPath, 0700)
+	}
+	return fmt.Errorf("database directory permissions must be private (0700)")
+}
+
+func isDedicatedTempDirectory(path string) bool {
+	tempRoot, err := filepath.Abs(os.TempDir())
+	if err != nil {
+		return false
+	}
+	cleanPath, err := filepath.Abs(path)
+	if err != nil {
+		return false
+	}
+	relative, err := filepath.Rel(tempRoot, cleanPath)
+	if err != nil || relative == "." || relative == ".." ||
+		strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return false
+	}
+	return true
+}
+
+func secureDatabaseFile(path string) error {
+	info, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		file, createErr := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_EXCL, 0600)
+		if errors.Is(createErr, os.ErrExist) {
+			return secureDatabaseFile(path)
+		}
+		if createErr != nil {
+			return createErr
+		}
+		return file.Close()
+	}
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		return fmt.Errorf("database path must be a regular file, not a symlink")
+	}
+	return os.Chmod(path, 0600)
 }
 
 func normalizeServerError(err error) error {

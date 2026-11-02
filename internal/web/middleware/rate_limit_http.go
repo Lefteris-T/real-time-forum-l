@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"net/http"
@@ -13,6 +15,10 @@ import (
 const unknownClientKey = "unknown-client"
 
 func clientKey(r *http.Request) string {
+	return clientKeyWithTrustedProxies(r, nil)
+}
+
+func clientKeyWithTrustedProxies(r *http.Request, trusted []netip.Prefix) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return unknownClientKey
@@ -23,7 +29,39 @@ func clientKey(r *http.Request) string {
 		return unknownClientKey
 	}
 
-	return address.Unmap().String()
+	peer := address.Unmap()
+	if !isTrustedProxy(peer, trusted) {
+		return peer.String()
+	}
+
+	var forwarded []string
+	for _, value := range r.Header.Values("X-Forwarded-For") {
+		forwarded = append(forwarded, strings.Split(value, ",")...)
+	}
+	if len(forwarded) == 0 {
+		return peer.String()
+	}
+	current := peer
+	for index := len(forwarded) - 1; index >= 0; index-- {
+		forwardedAddress, parseErr := netip.ParseAddr(strings.TrimSpace(forwarded[index]))
+		if parseErr != nil {
+			return peer.String()
+		}
+		current = forwardedAddress.Unmap()
+		if !isTrustedProxy(current, trusted) {
+			return current.String()
+		}
+	}
+	return current.String()
+}
+
+func isTrustedProxy(address netip.Addr, trusted []netip.Prefix) bool {
+	for _, prefix := range trusted {
+		if prefix.Contains(address.Unmap()) {
+			return true
+		}
+	}
+	return false
 }
 
 type rateLimitRule string
@@ -35,10 +73,13 @@ const (
 	rateLimitRulePost     rateLimitRule = "post"
 	rateLimitRuleComment  rateLimitRule = "comment"
 	rateLimitRuleReaction rateLimitRule = "reaction"
+	rateLimitRuleMessage  rateLimitRule = "message"
+	rateLimitRuleProfile  rateLimitRule = "profile"
 )
 
 func requestRateLimitRule(r *http.Request) rateLimitRule {
-	if r.Method != http.MethodPost {
+	if r.Method != http.MethodPost && r.Method != http.MethodPut &&
+		r.Method != http.MethodPatch && r.Method != http.MethodDelete {
 		return rateLimitRuleNone
 	}
 
@@ -54,11 +95,21 @@ func requestRateLimitRule(r *http.Request) rateLimitRule {
 
 	case len(parts) == 1 && parts[0] == "posts":
 		return rateLimitRulePost
+	case len(parts) == 2 && parts[0] == "api" && parts[1] == "posts":
+		return rateLimitRulePost
+	case len(parts) == 2 && parts[0] == "api" && parts[1] == "profile":
+		return rateLimitRuleProfile
+	case len(parts) == 2 && parts[0] == "api" && parts[1] == "messages":
+		return rateLimitRuleMessage
+	case len(parts) == 4 && parts[0] == "api" && parts[1] == "conversations" && parts[2] != "" && parts[3] == "read":
+		return rateLimitRuleMessage
 
 	case len(parts) == 3 &&
 		parts[0] == "posts" &&
 		parts[1] != "" &&
 		parts[2] == "comments":
+		return rateLimitRuleComment
+	case len(parts) == 4 && parts[0] == "api" && parts[1] == "posts" && parts[2] != "" && parts[3] == "comments":
 		return rateLimitRuleComment
 
 	case len(parts) == 3 &&
@@ -72,6 +123,8 @@ func requestRateLimitRule(r *http.Request) rateLimitRule {
 		parts[1] != "" &&
 		parts[2] == "react":
 		return rateLimitRuleReaction
+	case len(parts) == 4 && parts[0] == "api" && parts[1] == "posts" && parts[2] != "" && parts[3] == "react":
+		return rateLimitRuleReaction
 
 	default:
 		return rateLimitRuleNone
@@ -79,16 +132,18 @@ func requestRateLimitRule(r *http.Request) rateLimitRule {
 }
 
 type HTTPRateLimiter struct {
-	global *RateLimiter
-	byRule map[rateLimitRule]*RateLimiter
+	global            *RateLimiter
+	byRule            map[rateLimitRule]*RateLimiter
+	trustedProxyCIDRs []netip.Prefix
 }
 
-func NewHTTPRateLimiter() (*HTTPRateLimiter, error) {
-	return newHTTPRateLimiter(time.Now)
+func NewHTTPRateLimiter(trustedProxyCIDRs ...[]netip.Prefix) (*HTTPRateLimiter, error) {
+	return newHTTPRateLimiter(time.Now, trustedProxyCIDRs...)
 }
 
 func newHTTPRateLimiter(
 	now func() time.Time,
+	trustedProxyCIDRs ...[]netip.Prefix,
 ) (*HTTPRateLimiter, error) {
 	const (
 		inactiveAfter   = 10 * time.Minute
@@ -98,8 +153,11 @@ func newHTTPRateLimiter(
 	limiter := &HTTPRateLimiter{
 		byRule: make(map[rateLimitRule]*RateLimiter),
 	}
+	if len(trustedProxyCIDRs) > 0 {
+		limiter.trustedProxyCIDRs = append([]netip.Prefix(nil), trustedProxyCIDRs[0]...)
+	}
 
-	created := make([]*RateLimiter, 0, 6)
+	created := make([]*RateLimiter, 0, 8)
 
 	create := func(
 		name string,
@@ -148,6 +206,8 @@ func newHTTPRateLimiter(
 		{rateLimitRulePost, 20, 20},
 		{rateLimitRuleComment, 30, 30},
 		{rateLimitRuleReaction, 60, 60},
+		{rateLimitRuleMessage, 30, 10},
+		{rateLimitRuleProfile, 10, 5},
 	}
 
 	for _, policy := range policies {
@@ -180,7 +240,7 @@ func (l *HTTPRateLimiter) Stop() {
 }
 func (l *HTTPRateLimiter) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		key := clientKey(r)
+		key := clientKeyWithTrustedProxies(r, l.trustedProxyCIDRs)
 		rule := requestRateLimitRule(r)
 
 		if !l.global.Allow(key) {
@@ -190,13 +250,27 @@ func (l *HTTPRateLimiter) Middleware(next http.Handler) http.Handler {
 
 		if rule != rateLimitRuleNone {
 			ruleLimiter, exists := l.byRule[rule]
-			if exists && !ruleLimiter.Allow(key) {
-				writeRateLimitExceeded(
-					w,
-					retryAfterForRule(rule),
-					rule,
-				)
-				return
+			if exists {
+				keys := []string{key}
+				if rule == rateLimitRuleLogin {
+					r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+					if err := r.ParseForm(); err == nil {
+						identifier := strings.ToLower(strings.TrimSpace(r.FormValue("identifier")))
+						if identifier != "" {
+							digest := sha256.Sum256([]byte(identifier))
+							keys = append(keys, "login-account:"+hex.EncodeToString(digest[:]))
+						}
+					}
+				}
+				if user, ok := CurrentUser(r.Context()); ok {
+					keys = append(keys, fmt.Sprintf("user:%d", user.ID))
+				}
+				for _, limitKey := range keys {
+					if !ruleLimiter.Allow(limitKey) {
+						writeRateLimitExceeded(w, retryAfterForRule(rule), rule)
+						return
+					}
+				}
 			}
 		}
 
@@ -216,6 +290,12 @@ func retryAfterForRule(rule rateLimitRule) time.Duration {
 
 	case rateLimitRuleReaction:
 		return time.Second
+
+	case rateLimitRuleMessage:
+		return 2 * time.Second
+
+	case rateLimitRuleProfile:
+		return 6 * time.Second
 
 	default:
 		return time.Second

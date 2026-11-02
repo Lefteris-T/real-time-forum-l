@@ -4,6 +4,8 @@ package config
 import (
 	"fmt"
 	"net"
+	"net/netip"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -21,14 +23,17 @@ const (
 
 // Config contains every runtime value required to construct the application.
 type Config struct {
-	Address         string
-	DatabasePath    string
-	SessionDuration time.Duration
-	CookieName      string
-	SecureCookie    bool
-	HTTPSEnabled    bool
-	TLSCertFile     string
-	TLSKeyFile      string
+	Address           string
+	DatabasePath      string
+	SessionDuration   time.Duration
+	CookieName        string
+	SecureCookie      bool
+	HTTPSEnabled      bool
+	Production        bool
+	PublicOrigin      string
+	TrustedProxyCIDRs []netip.Prefix
+	TLSCertFile       string
+	TLSKeyFile        string
 }
 
 // Load applies defaults, reads FORUM_* overrides, and validates the result.
@@ -42,7 +47,14 @@ func Load() (Config, error) {
 		HTTPSEnabled:    defaultHTTPSEnabled,
 		TLSCertFile:     os.Getenv("FORUM_TLS_CERT_FILE"),
 		TLSKeyFile:      os.Getenv("FORUM_TLS_KEY_FILE"),
+		Production:      strings.EqualFold(strings.TrimSpace(os.Getenv("FORUM_ENV")), "production"),
+		PublicOrigin:    strings.TrimSpace(os.Getenv("FORUM_PUBLIC_ORIGIN")),
 	}
+	trustedProxies, err := parseTrustedProxyCIDRs(os.Getenv("FORUM_TRUSTED_PROXY_CIDRS"))
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.TrustedProxyCIDRs = trustedProxies
 	durationValue := os.Getenv("FORUM_SESSION_DURATION")
 	if durationValue != "" {
 		duration, err := time.ParseDuration(durationValue)
@@ -76,12 +88,31 @@ func Load() (Config, error) {
 
 	}
 	cfg.SecureCookie = cfg.HTTPSEnabled || cfg.SecureCookie
+	if cfg.SecureCookie && strings.TrimSpace(os.Getenv("FORUM_COOKIE_NAME")) == "" {
+		cfg.CookieName = "__Host-forum_session"
+	}
 
 	if err := validate(&cfg); err != nil {
 		return Config{}, err
 	}
 
 	return cfg, nil
+}
+
+func parseTrustedProxyCIDRs(value string) ([]netip.Prefix, error) {
+	if strings.TrimSpace(value) == "" {
+		return nil, nil
+	}
+	parts := strings.Split(value, ",")
+	prefixes := make([]netip.Prefix, 0, len(parts))
+	for _, part := range parts {
+		prefix, err := netip.ParsePrefix(strings.TrimSpace(part))
+		if err != nil {
+			return nil, fmt.Errorf("invalid trusted proxy CIDR %q: %w", part, err)
+		}
+		prefixes = append(prefixes, prefix.Masked())
+	}
+	return prefixes, nil
 }
 
 func envOrDefault(key, defaultValue string) string {
@@ -109,8 +140,32 @@ func validate(cfg *Config) error {
 	if err := validateCookieName(cfg.CookieName); err != nil {
 		return err
 	}
+	if strings.HasPrefix(cfg.CookieName, "__Host-") && !cfg.SecureCookie {
+		return fmt.Errorf("__Host- cookies require secure cookies")
+	}
 	if err := validateHTTPS(cfg); err != nil {
 		return err
+	}
+	for _, prefix := range cfg.TrustedProxyCIDRs {
+		if !prefix.IsValid() {
+			return fmt.Errorf("trusted proxy CIDRs must be valid network prefixes")
+		}
+	}
+	if cfg.PublicOrigin != "" {
+		origin, err := url.Parse(cfg.PublicOrigin)
+		if err != nil || origin.Scheme == "" || origin.Host == "" || origin.User != nil ||
+			origin.Path != "" || origin.RawQuery != "" || origin.Fragment != "" {
+			return fmt.Errorf("public origin must be a scheme and host only")
+		}
+		if cfg.Production && !strings.EqualFold(origin.Scheme, "https") {
+			return fmt.Errorf("production public origin must use HTTPS")
+		}
+	}
+	if cfg.Production && !cfg.SecureCookie {
+		return fmt.Errorf("production requires FORUM_SECURE_COOKIE=true or HTTPS enabled")
+	}
+	if cfg.Production && !cfg.HTTPSEnabled && cfg.PublicOrigin == "" {
+		return fmt.Errorf("production behind a TLS proxy requires FORUM_PUBLIC_ORIGIN")
 	}
 	return nil
 }

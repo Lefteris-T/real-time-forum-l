@@ -12,8 +12,9 @@ services:
     environment:
       FORUM_ADDRESS: ":8443"
       FORUM_DATABASE_PATH: "/app/data/realtime-forum.db"
+      FORUM_ENV: "production"
       FORUM_SESSION_DURATION: "24h"
-      FORUM_COOKIE_NAME: "forum_session"
+      FORUM_COOKIE_NAME: "__Host-forum_session"
       FORUM_HTTPS_ENABLED: "true"
       FORUM_TLS_CERT_FILE: "/run/certs/localhost.crt"
       FORUM_TLS_KEY_FILE: "/run/certs/localhost.key"

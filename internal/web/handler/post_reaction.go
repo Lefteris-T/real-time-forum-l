@@ -71,6 +71,7 @@ func (h *PostReactionHandler) ServeHTTP(
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	if err := r.ParseForm(); err != nil {
 		http.Error(
 			w,

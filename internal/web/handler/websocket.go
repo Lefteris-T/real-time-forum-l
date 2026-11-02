@@ -14,16 +14,21 @@ const websocketReadLimit = 16 << 10
 // WebSocketHandler authenticates, upgrades, and registers browser connections
 // with the shared hub.
 type WebSocketHandler struct {
-	upgrader websocket.Upgrader
-	hub      *WebSocketHub
+	upgrader     websocket.Upgrader
+	hub          *WebSocketHub
+	publicOrigin string
 }
 
-func NewWebSocketHandler(hub *WebSocketHub) *WebSocketHandler {
+func NewWebSocketHandler(hub *WebSocketHub, publicOrigins ...string) *WebSocketHandler {
+	publicOrigin := ""
+	if len(publicOrigins) > 0 {
+		publicOrigin = publicOrigins[0]
+	}
 	return &WebSocketHandler{
-		hub: hub,
+		hub: hub, publicOrigin: publicOrigin,
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {
-				return sameOriginWebSocketRequest(r)
+				return sameOriginWebSocketRequestForOrigin(r, publicOrigin)
 			},
 		},
 	}
@@ -40,7 +45,7 @@ func (h *WebSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 		return
 	}
-	if !sameOriginWebSocketRequest(r) {
+	if !sameOriginWebSocketRequestForOrigin(r, h.publicOrigin) {
 		http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
 		return
 	}
@@ -65,6 +70,10 @@ func (h *WebSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // matching the direct request's scheme and authority. Forwarding headers are
 // deliberately ignored because this server has no trusted-proxy boundary.
 func sameOriginWebSocketRequest(r *http.Request) bool {
+	return sameOriginWebSocketRequestForOrigin(r, "")
+}
+
+func sameOriginWebSocketRequestForOrigin(r *http.Request, configuredOrigin string) bool {
 	origins := r.Header.Values("Origin")
 	if len(origins) != 1 || strings.TrimSpace(origins[0]) == "" {
 		return false
@@ -76,9 +85,16 @@ func sameOriginWebSocketRequest(r *http.Request) bool {
 	}
 
 	wantScheme := "http"
-	if r.TLS != nil {
+	wantHost := r.Host
+	if configuredOrigin != "" {
+		configured, parseErr := url.Parse(configuredOrigin)
+		if parseErr != nil || configured.Host == "" {
+			return false
+		}
+		wantScheme, wantHost = configured.Scheme, configured.Host
+	} else if r.TLS != nil {
 		wantScheme = "https"
 	}
 	return strings.EqualFold(origin.Scheme, wantScheme) &&
-		strings.EqualFold(origin.Host, r.Host)
+		strings.EqualFold(origin.Host, wantHost)
 }

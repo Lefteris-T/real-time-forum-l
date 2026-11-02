@@ -221,6 +221,8 @@ func TestNewHTTPRateLimiterCreatesAllPolicies(t *testing.T) {
 		rateLimitRulePost,
 		rateLimitRuleComment,
 		rateLimitRuleReaction,
+		rateLimitRuleMessage,
+		rateLimitRuleProfile,
 	}
 
 	if got := len(limiter.byRule); got != len(rules) {

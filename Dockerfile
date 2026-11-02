@@ -26,6 +26,7 @@ COPY templates /app/templates
 COPY static /app/static
 
 RUN mkdir -p /app/data \
+    && chmod 700 /app/data \
     && chown -R forum:forum /app
 
 USER forum
@@ -34,6 +35,8 @@ EXPOSE 8443
 
 ENV FORUM_ADDRESS=:8443
 ENV FORUM_DATABASE_PATH=/app/data/forum.db
+ENV FORUM_ENV=production
+ENV FORUM_COOKIE_NAME=__Host-forum_session
 ENV FORUM_HTTPS_ENABLED=true
 ENV FORUM_TLS_CERT_FILE=/run/certs/localhost.crt
 ENV FORUM_TLS_KEY_FILE=/run/certs/localhost.key

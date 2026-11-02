@@ -20,6 +20,12 @@ func SecurityHeaders(next http.Handler) http.Handler {
 			"Referrer-Policy",
 			"same-origin",
 		)
+		w.Header().Set(
+			"Content-Security-Policy",
+			"default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self' ws: wss:",
+		)
+		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+		w.Header().Set("Strict-Transport-Security", "max-age=31536000")
 
 		next.ServeHTTP(w, r)
 	})

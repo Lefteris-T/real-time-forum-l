@@ -42,6 +42,9 @@ set +a
 go run ./cmd/forum
 ```
 
+```or make run
+```
+
 Open <https://localhost:8443>. The local certificate is self-signed, so your
 browser will show a warning unless you trust that certificate for local
 development. The app creates its SQLite database at
@@ -55,11 +58,36 @@ FORUM_ADDRESS=localhost:8080 \
 FORUM_DATABASE_PATH=data/realtime-forum.db \
 FORUM_HTTPS_ENABLED=false \
 FORUM_SECURE_COOKIE=false \
+FORUM_COOKIE_NAME=forum_session \
 go run ./cmd/forum
 ```
 
 Then open <http://localhost:8080>. Use HTTPS for the browser security and
 WebSocket audit.
+
+## Security Configuration
+
+For a public deployment, set `FORUM_ENV=production` and require HTTPS. When
+the Go server terminates TLS itself, set `FORUM_HTTPS_ENABLED=true` and provide
+the TLS certificate and key. Behind a TLS-terminating proxy, set
+`FORUM_SECURE_COOKIE=true` and `FORUM_PUBLIC_ORIGIN=https://your-forum-host`;
+configure the proxy to serve HTTPS and preserve the public host. Production
+startup rejects a non-Secure session cookie or a proxy setup without its public
+origin. The app verifies `Origin`/`Referer` and Fetch Metadata on every
+state-changing request, applies per-IP and per-account limits to writes, and
+sets CSP/HSTS/security headers.
+When HTTPS cookies are enabled and no custom cookie name is set, the app uses
+the browser-enforced `__Host-` cookie prefix.
+
+If the app is behind a reverse proxy, set `FORUM_TRUSTED_PROXY_CIDRS` to the
+proxy address ranges (comma-separated CIDRs) so rate limits can use the client
+address from `X-Forwarded-For`. The app ignores forwarded addresses from peers
+outside those configured ranges.
+
+The database directory must be private (`0700`) and the database file is set
+to `0600`. The default `data` directory is secured automatically. For a
+custom database directory, create it with private permissions before starting
+the app. Keep database backups private as well.
 
 Stop the local server with Ctrl+C. Run automated Go checks with:
 

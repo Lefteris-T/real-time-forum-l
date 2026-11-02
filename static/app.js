@@ -251,7 +251,7 @@ function openConversation(contactButton) {
       existing.minimizedButton = null;
     }
     existing.element.hidden = false;
-    existing.element.style.zIndex = String(++chatWindowSequence);
+    chatWindowSequence += 1;
     chatLauncher.hidden = true;
     if (existing.conversationID > 0) void markConversationRead(existing.conversationID);
     return;
@@ -283,7 +283,6 @@ function openConversation(contactButton) {
     request: null, scrollTimer: null, minimizedButton: null,
   };
   chatWindows.set(contactID, windowState);
-  element.style.zIndex = String(chatWindowSequence);
   chatWindowsElement.append(element);
   chatLauncher.hidden = true;
 
@@ -350,7 +349,7 @@ function minimizeConversation(windowState) {
     windowState.minimizedButton.remove();
     windowState.minimizedButton = null;
     windowState.element.hidden = false;
-    windowState.element.style.zIndex = String(++chatWindowSequence);
+    chatWindowSequence += 1;
     if (windowState.conversationID > 0) void markConversationRead(windowState.conversationID);
   });
   windowState.minimizedButton = bubble;

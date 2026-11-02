@@ -16,6 +16,8 @@ const (
 	websocketPongWait      = 60 * time.Second
 	websocketPingPeriod    = 30 * time.Second
 	websocketSendQueueSize = 32
+	websocketMaxPerUser    = 5
+	websocketMaxTotal      = 1000
 )
 
 // WebSocketEvent is the server-to-browser envelope reserved for presence and
@@ -48,10 +50,11 @@ type UserConnectionCloser interface {
 // WebSocketHub tracks every live connection by authenticated user. Its mutex
 // protects registration and routing; each client's writer owns socket writes.
 type WebSocketHub struct {
-	mu        sync.Mutex
-	clients   map[int64]map[*webSocketClient]struct{}
-	stopped   bool
-	clientsWG sync.WaitGroup
+	mu              sync.Mutex
+	clients         map[int64]map[*webSocketClient]struct{}
+	stopped         bool
+	connectionCount int
+	clientsWG       sync.WaitGroup
 }
 
 func NewWebSocketHub() *WebSocketHub {
@@ -64,11 +67,15 @@ func (h *WebSocketHub) register(client *webSocketClient) bool {
 	if h.stopped {
 		return false
 	}
+	if len(h.clients[client.userID]) >= websocketMaxPerUser || h.connectionCount >= websocketMaxTotal {
+		return false
+	}
 	firstConnection := len(h.clients[client.userID]) == 0
 	if h.clients[client.userID] == nil {
 		h.clients[client.userID] = make(map[*webSocketClient]struct{})
 	}
 	h.clients[client.userID][client] = struct{}{}
+	h.connectionCount++
 	h.clientsWG.Add(1)
 
 	onlineUsers := make([]presenceUser, 0, len(h.clients))
@@ -98,6 +105,7 @@ func (h *WebSocketHub) unregister(client *webSocketClient) {
 		return
 	}
 	delete(userClients, client)
+	h.connectionCount--
 	if len(userClients) == 0 {
 		delete(h.clients, client.userID)
 		if !h.stopped {
