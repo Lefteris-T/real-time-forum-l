@@ -21,14 +21,10 @@ const realtimeStatus = document.querySelector("#realtime-status");
 const realtimeRetry = document.querySelector("#realtime-retry");
 const contactStatus = document.querySelector("#contact-status");
 const contactList = document.querySelector("#contact-list");
-const chatTitle = document.querySelector("#chat-title");
-const chatStatus = document.querySelector("#chat-status");
-const chatHistory = document.querySelector("#chat-history");
-const historyRetry = document.querySelector("#history-retry");
-const messageForm = document.querySelector("#message-form");
-const messageBody = document.querySelector("#message-body");
-const messageImage = document.querySelector("#message-image");
-const messageStatus = document.querySelector("#message-status");
+const chatWindowsElement = document.querySelector("#chat-windows");
+const chatWindowTemplate = document.querySelector("#chat-window-template");
+const chatToggles = document.querySelectorAll("[data-chat-toggle]");
+const chatLauncher = document.querySelector("#chat-launcher");
 const profileTitle = document.querySelector("#profile-title");
 const profileStatus = document.querySelector("#profile-status");
 const profileDetails = document.querySelector("#profile-details");
@@ -52,14 +48,9 @@ let contacts = [];
 let contactsRequest = null;
 let contactsRefreshPending = false;
 let presenceSnapshotReceived = false;
-let selectedConversationID = 0;
-let selectedConversationName = "";
-let historyMessages = [];
-let historyHasOlder = false;
-let historyLoading = false;
-let historyGeneration = 0;
-let historyRequest = null;
-let historyScrollTimer = null;
+let currentUserID = 0;
+const chatWindows = new Map();
+let chatWindowSequence = 0;
 const unreadMessages = new Map();
 const seenMessageIDs = new Set();
 let latestMessageNotice = "";
@@ -100,6 +91,7 @@ function setAuthenticated(value) {
       realtimeRetryCount = 0;
     }
     contacts = [];
+    currentUserID = 0;
     unreadMessages.clear();
     seenMessageIDs.clear();
     latestMessageNotice = "";
@@ -117,20 +109,12 @@ function setAuthenticated(value) {
     detailPost.replaceChildren();
     postComments.replaceChildren();
     commentForm.hidden = true;
-    selectedConversationID = 0;
-    selectedConversationName = "";
-    historyMessages = [];
-    historyHasOlder = false;
-    historyLoading = false;
-    historyGeneration += 1;
-    historyRequest = null;
-    chatHistory.replaceChildren();
-    historyRetry.hidden = true;
-    chatTitle.textContent = "Chat";
-    chatStatus.textContent = "Sign in to view conversations.";
-    messageForm.hidden = true;
-    messageForm.reset();
-    messageStatus.textContent = "";
+    for (const windowState of chatWindows.values()) {
+      windowState.element.remove();
+      windowState.minimizedButton?.remove();
+    }
+    chatWindows.clear();
+    chatLauncher.hidden = true;
     profileForm.hidden = true;
     profileDetails.replaceChildren();
     profileStatus.textContent = "";
@@ -259,34 +243,118 @@ function loadContacts() {
 
 function openConversation(contactButton) {
   if (!authenticated) return;
-  selectedConversationID = Number(contactButton.dataset.conversationId) || 0;
-  selectedConversationName = String(contactButton.dataset.contactUsername || "Contact");
-  const selectedContactID = String(contactButton.dataset.contactId || "");
-  renderContacts();
-  historyGeneration += 1;
-  historyRequest = null;
-  historyLoading = false;
-  historyHasOlder = false;
-  historyMessages = [];
-  historyRetry.hidden = true;
-  if (historyScrollTimer !== null) {
-    clearTimeout(historyScrollTimer);
-    historyScrollTimer = null;
-  }
-  chatTitle.textContent = selectedConversationName;
-  messageForm.hidden = false;
-  messageStatus.textContent = "";
-  messageForm.dataset.recipientId = selectedContactID;
-  chatHistory.replaceChildren();
-  chatHistory.scrollTop = 0;
-  showView("chat");
-
-  if (selectedConversationID <= 0) {
-    chatStatus.textContent = "No messages in this conversation yet.";
+  const contactID = String(contactButton.dataset.contactId || "");
+  const existing = chatWindows.get(contactID);
+  if (existing) {
+    if (existing.minimizedButton) {
+      existing.minimizedButton.remove();
+      existing.minimizedButton = null;
+    }
+    existing.element.hidden = false;
+    existing.element.style.zIndex = String(++chatWindowSequence);
+    chatLauncher.hidden = true;
+    if (existing.conversationID > 0) void markConversationRead(existing.conversationID);
     return;
   }
-  chatStatus.textContent = "Loading messages…";
-  void loadConversationHistory(false);
+
+  const name = String(contactButton.dataset.contactUsername || "Contact");
+  const conversationID = Number(contactButton.dataset.conversationId) || 0;
+  const element = chatWindowTemplate.content.firstElementChild.cloneNode(true);
+  const title = element.querySelector("[data-chat-title]");
+  const avatar = element.querySelector(".conversation-avatar");
+  const status = element.querySelector("[data-chat-status]");
+  const history = element.querySelector("[data-chat-history]");
+  const retry = element.querySelector("[data-history-retry]");
+  const form = element.querySelector("[data-message-form]");
+  const body = element.querySelector("[data-message-body]");
+  const image = element.querySelector('input[name="image"]');
+  const messageStatus = element.querySelector("[data-message-status]");
+  const suffix = `${contactID}-${++chatWindowSequence}`;
+  body.id = `message-body-${suffix}`;
+  form.querySelector('label[for="message-body"]').htmlFor = body.id;
+  image.id = `message-image-${suffix}`;
+  form.querySelector("label:not([for])").htmlFor = image.id;
+  title.textContent = name;
+  avatar.textContent = name.slice(0, 1).toUpperCase() || "?";
+
+  const windowState = {
+    contactID, conversationID, name, element, status, history, retry, form, body, image,
+    messageStatus, messages: [], hasOlder: false, loading: false, generation: 1,
+    request: null, scrollTimer: null, minimizedButton: null,
+  };
+  chatWindows.set(contactID, windowState);
+  element.style.zIndex = String(chatWindowSequence);
+  chatWindowsElement.append(element);
+  chatLauncher.hidden = true;
+
+  element.querySelector("[data-chat-close]").addEventListener("click", () => closeConversation(windowState));
+  element.querySelector("[data-chat-minimize]").addEventListener("click", () => minimizeConversation(windowState));
+  history.addEventListener("scroll", () => {
+    if (windowState.scrollTimer !== null) return;
+    windowState.scrollTimer = setTimeout(() => {
+      windowState.scrollTimer = null;
+      if (history.scrollHeight > history.clientHeight && history.scrollTop <= 64 &&
+          windowState.hasOlder && !windowState.loading) {
+        void loadConversationHistory(windowState, true);
+      }
+    }, 120);
+  });
+  retry.addEventListener("click", () => {
+    void loadConversationHistory(windowState, retry.dataset.older === "true");
+  });
+  body.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" || event.shiftKey || event.isComposing) return;
+    event.preventDefault();
+    form.requestSubmit();
+  });
+  form.addEventListener("input", () => {
+    if (windowState.body.value.trim() || windowState.image.files.length > 0) {
+      windowState.messageStatus.textContent = "";
+    }
+  });
+  form.addEventListener("submit", (event) => void sendConversationMessage(windowState, event));
+
+  if (conversationID <= 0) {
+    status.textContent = "No messages in this conversation yet.";
+    return;
+  }
+  status.textContent = "Loading messages…";
+  void loadConversationHistory(windowState, false);
+}
+
+function closeConversation(windowState) {
+  windowState.generation += 1;
+  if (windowState.scrollTimer !== null) clearTimeout(windowState.scrollTimer);
+  chatWindows.delete(windowState.contactID);
+  windowState.element.remove();
+  windowState.minimizedButton?.remove();
+  windowState.minimizedButton = null;
+  const anyVisible = Array.from(chatWindows.values()).some((item) => !item.element.hidden);
+  if (!anyVisible) chatLauncher.hidden = !authenticated;
+}
+
+function minimizeConversation(windowState) {
+  if (windowState.minimizedButton) return;
+  windowState.element.hidden = true;
+  const bubble = document.createElement("button");
+  bubble.type = "button";
+  bubble.className = "chat-minimized";
+  bubble.setAttribute("aria-label", `Restore chat with ${windowState.name}`);
+  bubble.title = `Restore chat with ${windowState.name}`;
+  const avatar = document.createElement("span");
+  avatar.className = "chat-minimized-avatar";
+  avatar.setAttribute("aria-hidden", "true");
+  avatar.textContent = windowState.name.slice(0, 1).toUpperCase() || "?";
+  bubble.append(avatar, document.createTextNode(windowState.name));
+  bubble.addEventListener("click", () => {
+    windowState.minimizedButton.remove();
+    windowState.minimizedButton = null;
+    windowState.element.hidden = false;
+    windowState.element.style.zIndex = String(++chatWindowSequence);
+    if (windowState.conversationID > 0) void markConversationRead(windowState.conversationID);
+  });
+  windowState.minimizedButton = bubble;
+  chatWindowsElement.append(bubble);
 }
 
 function refreshMessageNotice() {
@@ -313,12 +381,13 @@ async function markConversationRead(conversationID) {
   }
 }
 
-function renderConversationMessages() {
-  chatHistory.replaceChildren();
-  for (const message of historyMessages) {
+function renderConversationMessages(windowState) {
+  windowState.history.replaceChildren();
+  for (const message of windowState.messages) {
     rememberMessageID(message.id);
     const article = document.createElement("article");
     article.className = "chat-message";
+    if (Number(message.sender_id) === currentUserID) article.classList.add("chat-message-own");
     article.dataset.messageId = String(message.id);
     const metadata = document.createElement("p");
     metadata.className = "chat-message-meta";
@@ -339,7 +408,7 @@ function renderConversationMessages() {
       image.loading = "lazy";
       article.append(image);
     }
-    chatHistory.append(article);
+    windowState.history.append(article);
   }
 }
 
@@ -350,17 +419,17 @@ function rememberMessageID(id) {
   seenMessageIDs.add(key);
 }
 
-function loadConversationHistory(older) {
-  if (!authenticated || selectedConversationID <= 0) return Promise.resolve();
-  if (historyRequest) return historyRequest;
-  if (older && (!historyHasOlder || historyLoading)) return Promise.resolve();
-  const requestGeneration = historyGeneration;
-  const conversationID = selectedConversationID;
-  const cursor = older ? historyMessages[0] : null;
+function loadConversationHistory(windowState, older) {
+  if (!authenticated || windowState.conversationID <= 0) return Promise.resolve();
+  if (windowState.request) return windowState.request;
+  if (older && (!windowState.hasOlder || windowState.loading)) return Promise.resolve();
+  const requestGeneration = windowState.generation;
+  const conversationID = windowState.conversationID;
+  const cursor = older ? windowState.messages[0] : null;
   if (older && !cursor) return Promise.resolve();
-  historyLoading = true;
-  historyRetry.hidden = true;
-  chatStatus.textContent = older ? "Loading earlier messages…" : "Loading messages…";
+  windowState.loading = true;
+  windowState.retry.hidden = true;
+  windowState.status.textContent = older ? "Loading earlier messages…" : "Loading messages…";
 
   const url = new URL(`/api/conversations/${encodeURIComponent(conversationID)}/messages`, window.location.origin);
   if (older) {
@@ -377,53 +446,53 @@ function loadConversationHistory(older) {
         headers: { Accept: "application/json" },
       });
       const result = await readJSON(response);
-      if (!authenticated || requestGeneration !== historyGeneration || conversationID !== selectedConversationID) return;
+      if (!authenticated || requestGeneration !== windowState.generation || !chatWindows.has(windowState.contactID)) return;
       if (!response.ok || !Array.isArray(result.messages)) {
         throw new Error(result.error || "Unable to load messages.");
       }
 
       if (older) {
         if (result.messages.length === 0) {
-          historyHasOlder = false;
-          chatStatus.textContent = "You’re at the beginning of this conversation.";
+          windowState.hasOlder = false;
+          windowState.status.textContent = "You’re at the beginning of this conversation.";
           return;
         }
-        const previousHeight = chatHistory.scrollHeight;
-        const previousTop = chatHistory.scrollTop;
-        const existingIDs = new Set(historyMessages.map((message) => String(message.id)));
+        const previousHeight = windowState.history.scrollHeight;
+        const previousTop = windowState.history.scrollTop;
+        const existingIDs = new Set(windowState.messages.map((message) => String(message.id)));
         const olderMessages = result.messages.filter((message) => !existingIDs.has(String(message.id)));
-        historyMessages = [...olderMessages, ...historyMessages];
-        historyHasOlder = Boolean(result.has_older);
-        renderConversationMessages();
-        chatHistory.scrollTop = previousTop + (chatHistory.scrollHeight - previousHeight);
-        chatStatus.textContent = "";
+        windowState.messages = [...olderMessages, ...windowState.messages];
+        windowState.hasOlder = Boolean(result.has_older);
+        renderConversationMessages(windowState);
+        windowState.history.scrollTop = previousTop + (windowState.history.scrollHeight - previousHeight);
+        windowState.status.textContent = "";
       } else {
         const byID = new Map();
         for (const message of result.messages) byID.set(String(message.id), message);
-        for (const message of historyMessages) byID.set(String(message.id), message);
-        historyMessages = Array.from(byID.values()).sort((a, b) =>
+        for (const message of windowState.messages) byID.set(String(message.id), message);
+        windowState.messages = Array.from(byID.values()).sort((a, b) =>
           a.created_at.localeCompare(b.created_at) || Number(a.id) - Number(b.id));
-        historyHasOlder = Boolean(result.has_older);
-        renderConversationMessages();
-        chatHistory.scrollTop = chatHistory.scrollHeight;
-        chatStatus.textContent = historyMessages.length ? "" : "No messages in this conversation yet.";
-        if (activeView === "chat") void markConversationRead(conversationID);
+        windowState.hasOlder = Boolean(result.has_older);
+        renderConversationMessages(windowState);
+        windowState.history.scrollTop = windowState.history.scrollHeight;
+        windowState.status.textContent = windowState.messages.length ? "" : "No messages in this conversation yet.";
+        void markConversationRead(conversationID);
       }
     } catch {
-      if (!authenticated || requestGeneration !== historyGeneration || conversationID !== selectedConversationID) return;
-      chatStatus.textContent = older
+      if (!authenticated || requestGeneration !== windowState.generation || !chatWindows.has(windowState.contactID)) return;
+      windowState.status.textContent = older
         ? "Unable to load earlier messages. Try again."
         : "Unable to load this conversation. Try again.";
-      historyRetry.dataset.older = String(older);
-      historyRetry.hidden = false;
+      windowState.retry.dataset.older = String(older);
+      windowState.retry.hidden = false;
     }
   })().finally(() => {
-    if (historyRequest === request) {
-      historyRequest = null;
-      historyLoading = false;
+    if (windowState.request === request) {
+      windowState.request = null;
+      windowState.loading = false;
     }
   });
-  historyRequest = request;
+  windowState.request = request;
   return request;
 }
 
@@ -434,18 +503,18 @@ function applyIncomingMessage(message) {
   if (seenMessageIDs.has(String(message.id))) return;
   rememberMessageID(message.id);
   const conversationID = message.conversation_id;
-  const isOpen = activeView === "chat" && selectedConversationID === conversationID;
-  const wasNearBottom = chatHistory.scrollHeight - chatHistory.scrollTop - chatHistory.clientHeight < 80;
-  if (isOpen) {
-    if (!historyMessages.some((item) => String(item.id) === String(message.id))) {
-      historyMessages.push(message);
-      historyMessages.sort((a, b) => a.created_at.localeCompare(b.created_at) || Number(a.id) - Number(b.id));
-      renderConversationMessages();
-      if (wasNearBottom) chatHistory.scrollTop = chatHistory.scrollHeight;
+  const windowState = Array.from(chatWindows.values()).find((item) => item.conversationID === conversationID);
+  if (windowState) {
+    const wasNearBottom = windowState.history.scrollHeight - windowState.history.scrollTop - windowState.history.clientHeight < 80;
+    if (!windowState.messages.some((item) => String(item.id) === String(message.id))) {
+      windowState.messages.push(message);
+      windowState.messages.sort((a, b) => a.created_at.localeCompare(b.created_at) || Number(a.id) - Number(b.id));
+      renderConversationMessages(windowState);
+      if (wasNearBottom) windowState.history.scrollTop = windowState.history.scrollHeight;
     }
     void markConversationRead(conversationID);
     const senderName = String(message.sender || "A contact");
-    chatStatus.textContent = wasNearBottom
+    windowState.status.textContent = wasNearBottom
       ? `New message from ${senderName}.`
       : `New message from ${senderName}. Scroll down to read it.`;
   } else {
@@ -462,28 +531,36 @@ function applyIncomingMessage(message) {
   else void loadContacts();
 }
 
-chatHistory.addEventListener("scroll", () => {
-  if (historyScrollTimer !== null) return;
-  historyScrollTimer = setTimeout(() => {
-    historyScrollTimer = null;
-    if (chatHistory.scrollHeight > chatHistory.clientHeight && chatHistory.scrollTop <= 64 &&
-        historyHasOlder && !historyLoading) {
-      void loadConversationHistory(true);
+for (const toggle of chatToggles) {
+  toggle.addEventListener("click", () => {
+    const expandedWindows = Array.from(chatWindows.values()).filter((item) => !item.minimizedButton);
+    if (expandedWindows.length === 0 && chatWindows.size === 0) {
+      const firstContact = contactList.querySelector("[data-open-contact]");
+      if (firstContact) {
+        firstContact.focus();
+        firstContact.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+      return;
     }
-  }, 120);
-});
+    const show = expandedWindows.some((item) => item.element.hidden);
+    for (const windowState of expandedWindows) {
+      windowState.element.hidden = !show;
+      if (show && windowState.conversationID > 0) void markConversationRead(windowState.conversationID);
+    }
+    chatLauncher.hidden = chatWindows.size > 0 && show ? true : !authenticated;
+  });
+}
 
-historyRetry.addEventListener("click", () => {
-  void loadConversationHistory(historyRetry.dataset.older === "true");
-});
-
-messageForm.addEventListener("submit", async (event) => {
+async function sendConversationMessage(windowState, event) {
   event.preventDefault();
-  if (!authenticated || !messageForm.dataset.recipientId) return;
+  if (!authenticated) return;
+  if (!windowState.body.value.trim() && windowState.image.files.length === 0) {
+    return;
+  }
   const requestGeneration = authGeneration;
-  const submitButton = messageForm.querySelector('button[type="submit"]');
+  const submitButton = windowState.form.querySelector('button[type="submit"]');
   submitButton.disabled = true;
-  messageStatus.textContent = "Sending…";
+  windowState.messageStatus.textContent = "Sending…";
   try {
     const response = await fetch("/api/messages", {
       method: "POST",
@@ -492,8 +569,8 @@ messageForm.addEventListener("submit", async (event) => {
         Accept: "application/json",
       },
       body: (() => {
-        const form = new FormData(messageForm);
-        form.set("recipient_id", messageForm.dataset.recipientId);
+        const form = new FormData(windowState.form);
+        form.set("recipient_id", windowState.contactID);
         return form;
       })(),
     });
@@ -501,25 +578,25 @@ messageForm.addEventListener("submit", async (event) => {
     if (!authenticated || requestGeneration !== authGeneration) return;
     if (!response.ok || !result.message) throw new Error(result.error || "Unable to send message.");
     const message = result.message;
-    selectedConversationID = Number(message.conversation_id);
-    if (!historyMessages.some((item) => String(item.id) === String(message.id))) historyMessages.push(message);
-    historyMessages.sort((a, b) => a.created_at.localeCompare(b.created_at) || Number(a.id) - Number(b.id));
-    renderConversationMessages();
-    chatHistory.scrollTop = chatHistory.scrollHeight;
-    chatStatus.textContent = "";
-    messageBody.value = "";
-    messageImage.value = "";
-    messageStatus.textContent = "";
+    windowState.conversationID = Number(message.conversation_id);
+    if (!windowState.messages.some((item) => String(item.id) === String(message.id))) windowState.messages.push(message);
+    windowState.messages.sort((a, b) => a.created_at.localeCompare(b.created_at) || Number(a.id) - Number(b.id));
+    renderConversationMessages(windowState);
+    windowState.history.scrollTop = windowState.history.scrollHeight;
+    windowState.status.textContent = "";
+    windowState.body.value = "";
+    windowState.image.value = "";
+    windowState.messageStatus.textContent = "";
     latestMessageNotice = "";
     void loadContacts();
   } catch (error) {
     if (authenticated && requestGeneration === authGeneration) {
-      messageStatus.textContent = error.message || "Unable to send message. Try again.";
+      windowState.messageStatus.textContent = error.message || "Unable to send message. Try again.";
     }
   } finally {
     submitButton.disabled = false;
   }
-});
+}
 
 profileForm.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -711,6 +788,11 @@ async function readJSON(response) {
 }
 
 document.addEventListener("click", (event) => {
+  if (event.target.closest("[data-home-feed]")) {
+    showView(authenticated ? "feed" : "login");
+    if (authenticated) void loadFeed();
+    return;
+  }
   const profileButton = event.target.closest("[data-open-profile]");
   if (profileButton) {
     void loadProfile(Number(profileButton.dataset.openProfile), false);
@@ -727,6 +809,8 @@ document.addEventListener("click", (event) => {
     return;
   }
   const button = event.target.closest("[data-view]");
+
+  if (event.target.closest("[data-chat-toggle]")) return;
 
   if (!button) {
     return;
@@ -838,7 +922,10 @@ async function loadProfile(profileID, owner) {
     if (!authenticated || requestGeneration !== authGeneration) return;
     if (!response.ok || !result.profile) throw new Error(result.error || "Unable to load profile.");
     const profile = result.profile;
-    profileTitle.textContent = profile.username;
+    profileTitle.textContent = owner ? "My Profile" : `${profile.username}’s Profile`;
+    profileStatus.textContent = owner
+      ? "Your public profile. Only you can edit these details."
+      : "Public profile · read-only.";
     const fields = [
       ["Nickname", profile.username], ["First name", profile.first_name], ["Last name", profile.last_name],
       ["Age", String(profile.age)], ["Gender", profile.gender],
@@ -1114,6 +1201,7 @@ loginForm.addEventListener("submit", async (event) => {
 
     loginForm.reset();
     setAuthenticated(true);
+    void loadCurrentUser();
     showView("feed");
     void loadFeed();
     showAuthStatus(result.message || "Login successful.", "success");
@@ -1245,12 +1333,30 @@ async function restoreSession() {
     setAuthenticated(Boolean(result.authenticated));
     showView(authenticated ? "feed" : "login");
     if (authenticated) {
+      void loadCurrentUser();
       void loadFeed();
     }
   } catch {
     setAuthenticated(false);
     showView("login");
     showAuthStatus("Unable to check your sign-in status. Please try again.", "error");
+  }
+}
+
+async function loadCurrentUser() {
+  try {
+    const response = await fetch("/api/profile", {
+      method: "GET",
+      credentials: "same-origin",
+      headers: { Accept: "application/json" },
+    });
+    const result = await readJSON(response);
+    if (response.ok && Number.isSafeInteger(result.profile?.id)) {
+      currentUserID = result.profile.id;
+      for (const windowState of chatWindows.values()) renderConversationMessages(windowState);
+    }
+  } catch {
+    currentUserID = 0;
   }
 }
 

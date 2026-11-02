@@ -9,14 +9,13 @@
 </head>
 <body>
   <header>
-    <h1>Real-Time Forum</h1>
+    <h1><button class="home-button" type="button" data-home-feed>Real-Time Forum</button></h1>
 
     <nav aria-label="Main navigation">
       <button type="button" data-view="login" data-guest-only>Login</button>
       <button type="button" data-view="register" data-guest-only>Register</button>
       <button type="button" data-view="feed" data-auth-required hidden>Feed</button>
       <button type="button" data-view="create-post" data-auth-required hidden>Create Post</button>
-      <button type="button" data-view="chat" data-auth-required hidden>Chat</button>
       <button type="button" data-view="profile" data-profile-owner data-auth-required hidden>My Profile</button>
       <button type="button" data-logout hidden>Logout</button>
     </nav>
@@ -203,26 +202,39 @@
         <button type="button" data-view="feed">Back to feed</button>
       </section>
 
-      <section data-view-panel="chat" hidden>
-        <h2 id="chat-title">Chat</h2>
-        <p id="chat-status" role="status" aria-live="polite">Choose a contact to view messages.</p>
-        <button id="history-retry" type="button" hidden>Retry loading messages</button>
-        <div id="chat-history" class="chat-history" role="log" aria-live="polite" tabindex="0"></div>
-        <form id="message-form" class="message-form" hidden>
+      <div id="chat-windows" class="chat-windows" aria-label="Open conversations"></div>
+      <template id="chat-window-template">
+      <section class="chat-widget" aria-label="Private conversation">
+        <div class="conversation-header">
+          <span class="conversation-avatar" aria-hidden="true">?</span>
+          <div>
+            <h2 data-chat-title>Chat</h2>
+            <p>Private conversation</p>
+          </div>
+          <button data-chat-minimize class="chat-minimize" type="button" aria-label="Minimize chat">−</button>
+          <button data-chat-close class="chat-close" type="button" aria-label="Close chat">×</button>
+        </div>
+        <p data-chat-status role="status" aria-live="polite">Loading messages…</p>
+        <button data-history-retry type="button" hidden>Retry loading messages</button>
+        <div data-chat-history class="chat-history" role="log" aria-live="polite" tabindex="0"></div>
+        <form data-message-form class="message-form">
           <label for="message-body">Message</label>
-          <textarea id="message-body" name="body" rows="3" maxlength="2000"></textarea>
-          <label for="message-image">Optional image (JPEG, PNG, or GIF; max 5 MiB)</label>
-          <input id="message-image" name="image" type="file" accept="image/jpeg,image/png,image/gif">
+          <textarea data-message-body name="body" rows="2" maxlength="2000" placeholder="Write a message…"></textarea>
+          <label class="message-image-label">Optional image (JPEG, PNG, or GIF; max 5 MiB)</label>
+          <input name="image" type="file" accept="image/jpeg,image/png,image/gif">
           <button type="submit">Send message</button>
-          <p id="message-status" role="status" aria-live="polite"></p>
+          <p data-message-status role="status" aria-live="polite"></p>
         </form>
       </section>
+      </template>
 
       <section data-view-panel="profile" hidden>
         <h2 id="profile-title">Profile</h2>
         <p id="profile-status" role="status" aria-live="polite"></p>
         <dl id="profile-details" class="profile-details"></dl>
         <form id="profile-form" class="profile-form" hidden>
+          <h3>Edit your profile</h3>
+          <p>These changes apply only to your profile.</p>
           <label for="profile-first-name">First name</label>
           <input id="profile-first-name" name="first_name" maxlength="80" required>
           <label for="profile-last-name">Last name</label>
@@ -243,5 +255,6 @@
       <ul id="contact-list" class="contact-list" aria-live="polite"></ul>
     </aside>
   </div>
+  <button id="chat-launcher" class="chat-launcher" type="button" data-chat-toggle data-auth-required hidden aria-label="Open messages"><span class="chat-launcher-icon" aria-hidden="true"></span><span>Messages</span></button>
 </body>
 </html>
